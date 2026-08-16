@@ -29,6 +29,15 @@ An unrecognised terminal still works, it just records without a directory. See
 omarchy plugin add https://github.com/monswiklund/omarchy-workspace-presets.git --enable
 ```
 
+It lands on the left of the bar. Somewhere else:
+
+```sh
+omarchy plugin enable io.github.monswiklund.workspace-presets --section right
+```
+
+The bar icon and "skip apps that are already running" are widget settings,
+edited where every other widget's are.
+
 Installed by hand instead:
 
 ```sh
