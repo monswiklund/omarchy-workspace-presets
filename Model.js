@@ -317,6 +317,34 @@ function withUrlRemoved(raw, sourceIndex, url) {
   return null
 }
 
+// ---------------------------------------------------------------- icons
+//
+// A fixed set rather than free text: every one of these was rendered in the
+// bar's font and checked by eye before it went in, which is the only way to
+// know a glyph is not a blank box on the machine it ships to.
+
+function iconChoices() {
+  return [
+    "󰅩", "󰙅", "󱂬", "󰈹", "󰆍", "󰡨", "󰆼",
+    "󰘦", "󰊤", "󰃤", "󱓞", "󰉋", "󰒓", "󰙨",
+    "󰄨", "󰄄", "󰋩", "󰌾", "󰒋", "󰄛", "󰏗",
+    "󰃣", "󰂺", "󰇮", "󰭹", "󰝚", "󰅶", "󰀹"
+  ]
+}
+
+function withIconSet(raw, sourceIndex, icon) {
+  var chosen = String(icon || "").trim()
+  if (chosen === "") return null
+
+  var list = presetList(raw).slice()
+  if (sourceIndex < 0 || sourceIndex >= list.length) return null
+
+  var entry = clonePresetEntry(list[sourceIndex])
+  entry.icon = chosen
+  list[sourceIndex] = entry
+  return withPresetList(raw, list)
+}
+
 // ------------------------------------------------------------ navigation
 //
 // The panel's own state machine, kept here because it is where the tests are.
@@ -347,6 +375,7 @@ function backOutStep(state) {
 function menuLabel(action, armed) {
   if (armed) return "Click again to confirm"
   switch (action) {
+    case "icon": return "Icon"
     case "stacks": return "Docker"
     case "pages": return "Pages"
     case "rename": return "Rename"

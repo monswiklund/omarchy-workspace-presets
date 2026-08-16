@@ -27,6 +27,7 @@ guess at — six icons on a row made a toolbar out of a list.
 ▣  Service System                    ⌄
    3 apps · 1 stack · ws 1
    Docker                        2  ›
+   Icon                            ›
    Pages                         2  ›
    Rename
    Update from this workspace
@@ -34,7 +35,7 @@ guess at — six icons on a row made a toolbar out of a list.
    Delete
 ```
 
-Docker and Pages swap the contents of the same slot rather than opening a level
+Docker, Pages and Icon swap the contents of the same slot rather than opening a level
 below it — three levels deep in a bar popup is nobody's idea of navigable.
 
 | Action | What it does                                                          |
@@ -42,6 +43,7 @@ below it — three levels deep in a bar popup is nobody's idea of navigable.
 | Launch | Click the row                                                          |
 | Docker | Tick the Compose projects this preset should bring up                  |
 | Pages  | Paste a URL and press Enter; click a page to remove it                 |
+| Icon   | A grid of glyphs; the current one is marked                            |
 | Rename | Inline field on the row itself                                         |
 | Update | Replaces the window rows with the current workspace, keeps the rest    |
 | Close  | Closes the windows and brings the stacks down                          |
@@ -405,6 +407,10 @@ Browser profiles work the same way: Chromium, Chrome, Brave, Edge and Vivaldi
 take `--profile-directory=NAME` with the last-used profile in their own
 `Local State`; Firefox names profiles with `-P` and keeps them in
 `profiles.ini`, so it gets its own branch rather than a row that almost fits.
+
+The icon set is fixed rather than free text, and every glyph in it was rendered
+in the bar's font and checked by eye before it went in — the only way to know a
+glyph is not a blank box on the machine it ships to.
 
 Both tables are pure string work, so `scripts/test-terminals` checks them
 without any of these programs installed — which is the point, since most of them

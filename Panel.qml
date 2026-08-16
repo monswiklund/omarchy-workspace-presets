@@ -64,7 +64,7 @@ Panel {
   property int menuCursor: 0
   readonly property bool expanded: expandedIndex !== -1
 
-  readonly property var menuItems: ["stacks", "pages", "rename", "update", "close", "delete"]
+  readonly property var menuItems: ["stacks", "pages", "icon", "rename", "update", "close", "delete"]
 
   // Destructive and lossy actions arm first; the row's own label says what the
   // second click will do.
@@ -221,6 +221,7 @@ Panel {
       var preset = root.presetBySourceIndex(root.expandedIndex)
       return preset ? Model.presetUrls(preset).length : 0
     }
+    if (root.expandedMode === "icon") return Model.iconChoices().length
     return 0
   }
 
@@ -242,8 +243,14 @@ Panel {
       if (urls[root.menuCursor]) root.removeUrl(preset, urls[root.menuCursor])
       return
     }
+    if (root.expandedMode === "icon") {
+      var icons = Model.iconChoices()
+      if (icons[root.menuCursor]) root.setIcon(preset, icons[root.menuCursor])
+      return
+    }
 
     switch (root.menuItems[root.menuCursor]) {
+      case "icon": return root.openMode("icon", preset)
       case "stacks": return root.openMode("stacks", preset)
       case "pages": return root.openMode("pages", preset)
       case "rename": return root.openMode("rename", preset)
@@ -258,6 +265,13 @@ Panel {
   function refreshComposeProjects() {
     if (composeProc.running) return
     composeProc.running = true
+  }
+
+  // Picking an icon keeps the row open: you want to see it land on the row you
+  // are looking at, and probably try another.
+  function setIcon(preset, icon) {
+    var next = Model.withIconSet(root.rawConfig, preset.sourceIndex, icon)
+    if (next) root.adoptConfig(next)
   }
 
   function toggleCompose(preset, project) {
@@ -719,7 +733,8 @@ Panel {
           anchors.leftMargin: Style.spacing.lg
           anchors.verticalCenter: parent.verticalCenter
           text: "‹  " + (root.expandedMode === "stacks" ? "Docker"
-            : root.expandedMode === "pages" ? "Pages" : "Back")
+            : root.expandedMode === "pages" ? "Pages"
+        : root.expandedMode === "icon" ? "Icon" : "Back")
           color: Qt.darker(root.barForeground, 1.3)
           font.family: root.fontFamily
           font.pixelSize: Style.font.bodySmall
@@ -813,6 +828,47 @@ Panel {
               color: Qt.darker(root.barForeground, 1.7)
               font.family: root.fontFamily
               font.pixelSize: Style.font.caption
+            }
+          }
+        }
+      }
+
+      // ---- icon
+      Flow {
+        visible: presetRow.open && root.expandedMode === "icon"
+        width: parent.width
+        spacing: Style.spacing.xs
+
+        Repeater {
+          model: presetRow.open && root.expandedMode === "icon" ? Model.iconChoices() : []
+
+          CursorSurface {
+            id: iconCell
+            required property var modelData
+            required property int index
+            readonly property bool current_: presetRow.preset.icon === modelData
+
+            width: Style.space(34)
+            height: Style.space(30)
+            hasCursor: root.menuCursor === index
+            current: current_
+            foreground: root.barForeground
+            accent: root.bar ? root.bar.foreground : Color.accent
+
+            MouseArea {
+              anchors.fill: parent
+              hoverEnabled: true
+              cursorShape: Qt.PointingHandCursor
+              onContainsMouseChanged: if (containsMouse) root.menuCursor = iconCell.index
+              onClicked: root.setIcon(presetRow.preset, iconCell.modelData)
+            }
+
+            Text {
+              anchors.centerIn: parent
+              text: iconCell.modelData
+              color: iconCell.current_ ? root.barForeground : Qt.darker(root.barForeground, 1.4)
+              font.family: root.fontFamily
+              font.pixelSize: Style.font.iconLarge
             }
           }
         }

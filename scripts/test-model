@@ -12,7 +12,7 @@ const vm = require("vm")
 
 const source = fs.readFileSync(path.join(__dirname, "..", "Model.js"), "utf8")
 const Model = {}
-vm.runInNewContext(source.replace(/^\.pragma library\s*/, "") + "\nObject.assign(exports, { parseConfig, runningClasses, launchPlan, pendingSteps, execExpr, focusExpr, presetSummary, renamedPreset, withoutPreset, presetList, parseComposeProjects, withComposeToggled, urlCommand, hasCompose, composeCommand, launchTally, withUrlAdded, withUrlRemoved, presetUrls, browserBaseFor, normalizeUrl, mergedLaunchSteps, withAppsReplaced, closePlan, closeSummary, closeWindowExpr, composeDownCommand, cycleIndex, backOutStep, menuLabel, isDestructive })", { exports: Model })
+vm.runInNewContext(source.replace(/^\.pragma library\s*/, "") + "\nObject.assign(exports, { parseConfig, runningClasses, launchPlan, pendingSteps, execExpr, focusExpr, presetSummary, renamedPreset, withoutPreset, presetList, parseComposeProjects, withComposeToggled, urlCommand, hasCompose, composeCommand, launchTally, withUrlAdded, withUrlRemoved, presetUrls, browserBaseFor, normalizeUrl, mergedLaunchSteps, withAppsReplaced, closePlan, closeSummary, closeWindowExpr, composeDownCommand, cycleIndex, backOutStep, menuLabel, isDestructive, iconChoices, withIconSet })", { exports: Model })
 
 let failures = 0
 function check(label, actual, expected) {
@@ -332,5 +332,18 @@ check("and otherwise names itself", Model.menuLabel("update", false), "Update fr
 check("Docker is called Docker, not Stacks", Model.menuLabel("stacks", false), "Docker")
 check("closing and deleting are the destructive pair",
   ["delete", "close", "rename", "pages"].map(Model.isDestructive), [true, true, false, false])
+
+// A fixed set, not free text: each of these was rendered in the bar's font and
+// checked by eye, which is the only way to know a glyph is not a blank box.
+const icons = Model.iconChoices()
+check("the icon set has no duplicates", new Set(icons).size, icons.length)
+check("and nothing empty", icons.every(i => i.trim().length > 0), true)
+
+const iconed = Model.withIconSet({ presets: [{ name: "P", icon: "󱂬", apps: [] }] }, 0, icons[3])
+check("picking an icon changes only the icon",
+  [Model.presetList(iconed)[0].icon, Model.presetList(iconed)[0].name], [icons[3], "P"])
+check("an empty icon is refused",
+  Model.withIconSet({ presets: [{ name: "P", apps: [] }] }, 0, "  "), null)
+check("Icon is named on the menu", Model.menuLabel("icon", false), "Icon")
 
 process.exit(failures === 0 ? 0 : 1)
