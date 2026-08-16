@@ -12,7 +12,7 @@ const vm = require("vm")
 
 const source = fs.readFileSync(path.join(__dirname, "..", "Model.js"), "utf8")
 const Model = {}
-vm.runInNewContext(source.replace(/^\.pragma library\s*/, "") + "\nObject.assign(exports, { parseConfig, runningClasses, launchPlan, pendingSteps, execExpr, focusExpr, presetSummary, renamedPreset, withoutPreset, presetList, parseComposeProjects, withComposeToggled, urlCommand, hasCompose, composeCommand, launchTally, withUrlAdded, withUrlRemoved, presetUrls, browserBaseFor, normalizeUrl, mergedLaunchSteps, withAppsReplaced, closePlan, closeSummary, closeWindowExpr, composeDownCommand, cycleIndex, backOutStep, menuLabel, isDestructive, iconChoices, withIconSet, looksActive, withPresetMoved, refreshTally })", { exports: Model })
+vm.runInNewContext(source.replace(/^\.pragma library\s*/, "") + "\nObject.assign(exports, { parseConfig, runningClasses, launchPlan, pendingSteps, execExpr, focusExpr, presetSummary, renamedPreset, withoutPreset, presetList, parseComposeProjects, withComposeToggled, urlCommand, hasCompose, composeCommand, launchTally, withUrlAdded, withUrlRemoved, presetUrls, browserBaseFor, normalizeUrl, mergedLaunchSteps, withAppsReplaced, closePlan, closeSummary, closeWindowExpr, composeDownCommand, cycleIndex, backOutStep, menuLabel, isDestructive, iconChoices, withIconSet, looksActive, withPresetMoved, refreshTally, armTransition })", { exports: Model })
 
 let failures = 0
 function check(label, actual, expected) {
@@ -394,5 +394,24 @@ check("an update says what it recorded and what it kept",
 check("with nothing to keep it says only what it recorded",
   Model.refreshTally([1], Model.parseConfig('{"presets":[{"name":"P","apps":[{"cmd":"x"}]}]}').presets[0]),
   "1 window")
+
+// Getting arming wrong is invisible: the row sits on "Click again to confirm"
+// forever while looking perfectly correct. That shipped, so it is tested now.
+const none = { "delete": -1, "close": -1, "update": -1 }
+
+const armed = Model.armTransition(none, "close", 2)
+check("the first click arms and does not fire", [armed.armed["close"], armed.fire], [2, false])
+
+const fired = Model.armTransition(armed.armed, "close", 2)
+check("the second click on the same action fires", fired.fire, true)
+check("and leaves nothing armed behind", fired.armed, none)
+
+check("a different action on the same row arms instead of firing",
+  Model.armTransition(armed.armed, "delete", 2).fire, false)
+check("and disarms the first — two live confirmations is a question with no answer",
+  Model.armTransition(armed.armed, "delete", 2).armed["close"], -1)
+
+check("the same action on a different preset arms that one",
+  Model.armTransition(armed.armed, "close", 5), { armed: { "delete": -1, "close": 5, "update": -1 }, fire: false })
 
 process.exit(failures === 0 ? 0 : 1)

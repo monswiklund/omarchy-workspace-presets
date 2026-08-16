@@ -381,6 +381,22 @@ function withPresetMoved(raw, sourceIndex, delta) {
   return withPresetList(raw, list)
 }
 
+// -------------------------------------------------------------- arming
+//
+// Two clicks on the same action fire it; anything else arms instead. Written
+// here rather than in the panel because getting it wrong is invisible: clearing
+// the target you are about to test makes the second click re-arm, and the row
+// sits on "Click again to confirm" forever while looking perfectly correct.
+
+function armTransition(armed, action, sourceIndex) {
+  var alreadyArmed = armed && armed[action] === sourceIndex
+  var next = { "delete": -1, "close": -1, "update": -1 }
+  // Arming one disarms the others — two live confirmations on one row is a
+  // question with no clear answer.
+  if (!alreadyArmed) next[action] = sourceIndex
+  return { armed: next, fire: alreadyArmed === true }
+}
+
 // ------------------------------------------------------------ navigation
 //
 // The panel's own state machine, kept here because it is where the tests are.

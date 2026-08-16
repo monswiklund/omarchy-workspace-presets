@@ -145,14 +145,10 @@ Panel {
   // Two steps, because a preset is hand-tuned work that snapshotting does not
   // bring back: the first click arms the row, the second one deletes.
   function requestDelete(preset) {
-    if (root.armedDeleteIndex !== preset.sourceIndex) {
-      root.renamingIndex = -1
-      root.armedDeleteIndex = preset.sourceIndex
-      return
-    }
+    root.renamingIndex = -1
+    if (!root.applyArm("delete", preset.sourceIndex)) return
 
     var next = Model.withoutPreset(root.rawConfig, preset.sourceIndex)
-    root.armedDeleteIndex = -1
     if (!next) return
     root.adoptConfig(next)
 
@@ -162,6 +158,20 @@ Panel {
     // controls until the mouse actually moves again.
     root.cursorActive = false
     root.rowAction = 0
+  }
+
+  // Returns true when this click is the confirming one.
+  function applyArm(action, sourceIndex) {
+    var step = Model.armTransition({
+      "delete": root.armedDeleteIndex,
+      "close": root.closeTarget,
+      "update": root.refreshTarget
+    }, action, sourceIndex)
+
+    root.armedDeleteIndex = step.armed["delete"]
+    root.closeTarget = step.armed["close"]
+    root.refreshTarget = step.armed["update"]
+    return step.fire
   }
 
   function disarm() {
@@ -293,14 +303,13 @@ Panel {
   }
 
   function requestClose(preset) {
-    root.disarm()
     root.renamingIndex = -1
-    if (root.closeTarget !== preset.sourceIndex) {
-      root.closeTarget = preset.sourceIndex
+    if (!root.applyArm("close", preset.sourceIndex)) {
+      // The confirmation names how many windows it found, so the list it counts
+      // has to be fresh when the row is armed rather than when it fires.
       root.refreshRunning()
       return
     }
-    root.closeTarget = -1
 
     var plan = root.closePlanFor(preset)
     // close, never kill: an editor with unsaved work gets to say so.
@@ -317,13 +326,8 @@ Panel {
   // ---- Refresh from the current workspace
 
   function requestRefresh(preset) {
-    root.disarm()
     root.renamingIndex = -1
-    if (root.refreshTarget !== preset.sourceIndex) {
-      root.refreshTarget = preset.sourceIndex
-      return
-    }
-    root.refreshTarget = -1
+    if (!root.applyArm("update", preset.sourceIndex)) return
     if (refreshProc.running) return
     root.refreshingIndex = preset.sourceIndex
     refreshProc.running = true
