@@ -5,7 +5,7 @@
   "version": "0.1.0",
   "author": "Måns Wiklund",
   "license": "MIT",
-  "description": "Launch a whole project setup — apps placed on their own workspaces — from one bar click.",
+  "description": "Snapshot a project workspace and bring it back with one click — apps on their workspaces, terminals in the directories they were in and running what they ran, Docker Compose stacks and browser pages.",
   "kinds": [
     "bar-widget"
   ],
@@ -14,7 +14,7 @@
   },
   "barWidget": {
     "displayName": "Workspace Presets",
-    "description": "Project presets that open every app on its workspace in one click",
+    "description": "Snapshot a project workspace and relaunch the whole thing from the bar",
     "category": "System",
     "allowMultiple": false,
     "defaultSection": "left",
