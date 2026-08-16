@@ -55,7 +55,7 @@ const plan = Model.launchPlan(preset, running, true)
 
 check("running app is skipped", plan.map(s => s.skipped), [true, false, false])
 check("classless app always launches", Model.pendingSteps(plan).map(s => s.app.cmd), ["ghostty", "slack"])
-check("summary counts what will actually run", Model.presetSummary(preset, plan), "2 of 3 to launch · ws 1, 2, 3")
+check("the summary shows what would be left out", Model.presetSummary(preset, plan), "󰖯 2/3   󰍹 1,2,3")
 // "0 of 2" is accurate and reads like a fault, which matters because a fresh
 // snapshot of the workspace you are on always starts out in exactly that state.
 const allUp = Model.parseConfig(JSON.stringify({
@@ -64,10 +64,10 @@ const allUp = Model.parseConfig(JSON.stringify({
     { cmd: "slack", workspace: 2, class: "Slack" }
   ] }]
 })).presets[0]
-check("a preset with nothing left to launch says so, not \"0 of 2\"",
+check("nothing left to launch still shows the whole count",
   Model.presetSummary(allUp, Model.launchPlan(allUp, Model.runningClasses(
     JSON.stringify([{ class: "chromium" }, { class: "Slack" }])), true)),
-  "all 2 already running · ws 1, 2")
+  "󰖯 0/2   󰍹 1,2")
 check("skipping off launches everything",
   Model.launchPlan(preset, running, false).map(s => s.skipped), [false, false, false])
 
@@ -354,9 +354,9 @@ const mixed = Model.parseConfig(JSON.stringify({ presets: [{ name: "P", apps: [
   { cmd: "chromium 'https://x.dev'", url: "https://x.dev" },
   { cmd: "chromium 'https://y.dev'", url: "https://y.dev" }
 ] }] })).presets[0]
-check("the summary counts each kind apart",
+check("the summary counts each kind apart, as glyphs",
   Model.presetSummary(mixed, Model.launchPlan(mixed, {}, false)),
-  "2 apps · 1 stack · 2 pages · ws 1")
+  "󰖯 2   󰡨 1   󰖟 2   󰍹 1")
 check("an empty preset says so",
   Model.presetSummary(Model.parseConfig('{"presets":[{"name":"P","apps":[]}]}').presets[0], []), "empty")
 

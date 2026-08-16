@@ -25,7 +25,7 @@ guess at — six icons on a row made a toolbar out of a list.
 
 ```
 ▣  Service System                    ⌄
-   · 3 apps · 1 stack · 2 pages · ws 1
+   · 󰖯 3   󰡨 1   󰖟 2   󰍹 1
    Docker                        2  ›
    Icon                            ›
    Pages                         2  ›
@@ -86,9 +86,14 @@ list showing a preset that was already gone from disk.
 
 ### What the list tells you
 
-The summary counts each kind apart — `3 apps · 1 stack · 2 pages · ws 1` —
-because "3 apps" on a preset holding two stacks and two pages is true and
-useless: you cannot see what it holds without opening it.
+The summary counts each kind apart as glyphs — `󰖯 3   󰡨 1   󰖟 2   󰍹 1` for
+three windows, one Docker stack, two pages and workspace 1. A row of counts
+reads at a glance where a sentence has to be read, and "3 apps" on a preset
+holding two stacks and two pages was true and useless. Two numbers appear only
+when something would actually be left out: `󰖯 2/3`.
+
+Every glyph here was rendered in the bar's font and checked by eye before it
+went in, the same as the icon set.
 
 A leading `·` and a filled row mark the project you are standing in: every
 window the preset can recognise is on screen. A preset made only of commands it

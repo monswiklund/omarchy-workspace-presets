@@ -658,6 +658,12 @@ function focusExpr(workspace) {
 // A snapshot is taken of the workspace you are standing on, so the preset it
 // writes starts life with every app already running. "0 of 4" is accurate and
 // reads like a fault; say what is actually true instead.
+// Glyphs rather than words, and each one rendered in the bar's font and checked
+// by eye before it went in. A row of counts reads at a glance; a sentence has
+// to be read.
+//
+//   󰖯 3  󰡨 1  󰖟 2  󰍹 1     three windows, one stack, two pages, workspace 1
+//
 function presetSummary(preset, plan) {
   var windows = 0
   var stacks = 0
@@ -669,23 +675,20 @@ function presetSummary(preset, plan) {
   }
   if (windows + stacks + pages === 0) return "empty"
 
-  // Counted apart, because "3 apps" on a preset holding two stacks and two
-  // pages is true and useless: you cannot see what it holds without opening it.
   var parts = []
   if (windows > 0) {
+    // Only worth two numbers when something would actually be left out.
     var pending = pendingSteps(plan).length
-    parts.push(pending === 0 && windows > 0 && plan.length > 0
-      ? "all " + windows + " already running"
-      : (pending < windows && pending > 0
-        ? pending + " of " + windows + " to launch"
-        : windows + (windows === 1 ? " app" : " apps")))
+    parts.push("󰖯 " + (pending < windows && plan.length > 0
+      ? pending + "/" + windows
+      : String(windows)))
   }
-  if (stacks > 0) parts.push(stacks + (stacks === 1 ? " stack" : " stacks"))
-  if (pages > 0) parts.push(pages + (pages === 1 ? " page" : " pages"))
+  if (stacks > 0) parts.push("󰡨 " + stacks)
+  if (pages > 0) parts.push("󰖟 " + pages)
 
   var workspaces = workspaceRange(preset)
-  if (workspaces !== "") parts.push(workspaces)
-  return parts.join(" · ")
+  if (workspaces !== "") parts.push("󰍹 " + workspaces)
+  return parts.join("   ")
 }
 
 // Whether this project looks like the one you are in. Every window the preset
@@ -728,6 +731,5 @@ function workspaceRange(preset) {
     if (ws !== "" && seen.indexOf(ws) === -1) seen.push(ws)
   }
   if (seen.length === 0) return ""
-  if (seen.length === 1) return "ws " + seen[0]
-  return "ws " + seen.join(", ")
+  return seen.join(",")
 }
