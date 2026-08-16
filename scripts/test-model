@@ -437,11 +437,16 @@ const rows = Model.presetContents(held, "/home/you")
 
 // The command a terminal was told to run says more than the terminal's name.
 check("a terminal is named by what it runs", rows[1].label, "docker compose logs -f")
-check("and detailed by where it runs", [rows[1].detail, rows[1].right], ["Dev/api", "󰍹 2"])
+check("and detailed by where it runs", [rows[1].detail, rows[1].right], ["~/Dev/api", "󰍹 2"])
 check("home is said as home, not spelled out", rows[2].detail, "~")
 check("a terminal running nothing is named by itself", rows[2].label, "ghostty")
 check("an app is named without its flags", rows[3].label, "chromium")
-check("a stack is named by its project directory", [rows[0].glyph, rows[0].label], ["󰡨", "Dev/api"])
+check("a stack is named by its project directory", [rows[0].glyph, rows[0].label], ["󰡨", "~/Dev/api"])
+// A folder just under home shows the username with two trailing components,
+// which reads like a filesystem root rather than the folder you chose.
+check("a folder under home keeps its tilde",
+  Model.presetContents(Model.parseConfig('{"presets":[{"name":"P","apps":[{"cmd":"ghostty --working-directory=/home/you/Dev"}]}]}').presets[0], "/home/you")[0].detail,
+  "~/Dev")
 check("a page drops the scheme", [rows[4].glyph, rows[4].label], ["󰖟", "jira.example.com/browse/X"])
 check("everything the preset holds is listed, in launch order", rows.length, 5)
 

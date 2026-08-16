@@ -385,11 +385,21 @@ function withPresetMoved(raw, sourceIndex, delta) {
 // What a preset actually holds, in the order it launches. The summary counts;
 // this names. Until now the only way to see the windows was to open the JSON.
 
-function shortenPath(dir) {
-  var parts = String(dir || "").replace(/\/+$/, "").split("/")
-  if (parts.length === 0) return ""
-  if (parts.length <= 2) return parts.join("/")
-  return parts.slice(-2).join("/")
+// Two trailing components is right for a project buried deep —
+// "sportson/service-system" — but wrong just under home, where it surfaces the
+// username and reads like a filesystem root rather than a folder you chose.
+function shortenPath(dir, home) {
+  var path = String(dir || "").replace(/\/+$/, "")
+  if (path === "") return ""
+  if (home && path === home) return "~"
+
+  if (home && path.indexOf(home + "/") === 0) {
+    var relative = path.slice(home.length + 1)
+    if (relative.split("/").length <= 2) return "~/" + relative
+  }
+
+  var parts = path.split("/")
+  return parts.length <= 2 ? parts.join("/") : parts.slice(-2).join("/")
 }
 
 function shortenUrl(url) {
@@ -412,11 +422,7 @@ function contentDirectory(app, home) {
   var match = String(app.cmd).match(/--(?:working-directory|directory|cwd)[= ](\S+)/)
   if (!match) return ""
 
-  var dir = match[1].replace(/\\ /g, " ")
-  // Home is where a shell sits when it sits nowhere in particular, and saying
-  // so is shorter and clearer than naming the path.
-  if (home && dir === home) return "~"
-  return shortenPath(dir)
+  return shortenPath(match[1].replace(/\\ /g, " "), home)
 }
 
 function presetContents(preset, home) {
@@ -425,7 +431,7 @@ function presetContents(preset, home) {
     var app = preset.apps[i]
 
     if (app.compose) {
-      rows.push({ glyph: "󰡨", label: shortenPath(app.compose.replace(/\/[^\/]+$/, "")), detail: "", right: "" })
+      rows.push({ glyph: "󰡨", label: shortenPath(app.compose.replace(/\/[^\/]+$/, ""), home), detail: "", right: "" })
       continue
     }
     if (app.url) {
