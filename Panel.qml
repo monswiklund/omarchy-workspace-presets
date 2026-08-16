@@ -57,17 +57,23 @@ Panel {
   // One expansion at a time, and its contents swap rather than nest — three
   // levels deep in a bar popup is nobody's idea of navigable.
   property int rowAction: 0
-  readonly property int rowActionCount: cursorIndex < presets.length ? 2 : 1
+  readonly property int rowActionCount: cursorIndex < presets.length ? 3 : 1
 
   property int expandedIndex: -1
   property string expandedMode: "menu"
   property int menuCursor: 0
   readonly property bool expanded: expandedIndex !== -1
 
-  readonly property var menuItems: ["contents", "stacks", "pages", "icon", "rename", "up", "down", "update", "close", "delete"]
+  readonly property var menuItems: ["contents", "stacks", "pages", "rename", "up", "down", "update", "close", "delete"]
 
   // Destructive and lossy actions arm first; the row's own label says what the
   // second click will do.
+  // Dragging a row to reorder. The move is committed once, on release: writing
+  // the file on every pixel of a drag would be a file write per frame.
+  property int draggingIndex: -1
+  property int dropIndex: -1
+  property real dragRowStep: 1
+
   property int closeTarget: -1
   property int refreshTarget: -1
   property int refreshingIndex: -1
@@ -182,6 +188,15 @@ Panel {
 
   // ---- The expansion
 
+  // The icon is the thing you are changing, so it is the thing you press.
+  function openIconPicker(preset) {
+    root.disarm()
+    root.renamingIndex = -1
+    root.expandedIndex = preset.sourceIndex
+    root.expandedMode = "icon"
+    root.menuCursor = 0
+  }
+
   function toggleExpanded(preset) {
     root.disarm()
     root.renamingIndex = -1
@@ -262,7 +277,6 @@ Panel {
 
     switch (root.menuItems[root.menuCursor]) {
       case "contents": return root.openMode("contents", preset)
-      case "icon": return root.openMode("icon", preset)
       case "up": return root.movePreset(preset, -1)
       case "down": return root.movePreset(preset, 1)
       case "stacks": return root.openMode("stacks", preset)
@@ -369,6 +383,23 @@ Panel {
 
   // The row follows the preset it moved, so a second press keeps moving the
   // same one instead of whatever slid into its place.
+  function beginDrag(preset, rowIndex, step) {
+    root.collapse()
+    root.disarm()
+    root.draggingIndex = rowIndex
+    root.dropIndex = rowIndex
+    root.dragRowStep = Math.max(1, step)
+  }
+
+  function endDrag(preset) {
+    var from = root.draggingIndex
+    var to = root.dropIndex
+    root.draggingIndex = -1
+    root.dropIndex = -1
+    if (from === -1 || to === from) return
+    root.movePreset(preset, to - from)
+  }
+
   function movePreset(preset, delta) {
     var next = Model.withPresetMoved(root.rawConfig, preset.sourceIndex, delta)
     if (!next) return
@@ -483,6 +514,7 @@ Panel {
     if (index < root.presets.length) {
       var preset = root.presets[index]
       if (root.rowAction === 1) return root.toggleExpanded(preset)
+      if (root.rowAction === 2) return root.openIconPicker(preset)
       return root.launch(preset)
     }
     if (index === root.presets.length) return root.snapshotWorkspace()
@@ -659,6 +691,21 @@ Panel {
           interactive: contentHeight > height
           model: root.presets
 
+          // A reorder you can follow: the row you dropped settles instead of
+          // teleporting, and the ones it displaced slide out of its way.
+          displaced: Transition {
+            NumberAnimation { properties: "y"; duration: 160; easing.type: Easing.OutCubic }
+          }
+          move: Transition {
+            NumberAnimation { properties: "y"; duration: 160; easing.type: Easing.OutCubic }
+          }
+          remove: Transition {
+            NumberAnimation { property: "opacity"; to: 0; duration: 120 }
+          }
+          add: Transition {
+            NumberAnimation { property: "opacity"; from: 0; to: 1; duration: 160 }
+          }
+
           // Keyboard navigation moves the cursor, not the view, so the view has
           // to follow it — a selection you cannot see is a selection you lose.
           currentIndex: root.cursorIndex < root.presets.length ? root.cursorIndex : -1
@@ -717,28 +764,94 @@ Panel {
     readonly property var urls: Model.presetUrls(preset)
     // Which project you are standing in, answered at a glance rather than by
     // reading five rows and remembering what you opened.
-    readonly property bool active: Model.looksActive(preset, root.running)
+    readonly property bool active: Model.looksActive(preset, root.clientsJson)
 
     implicitHeight: header.implicitHeight + (open ? body.implicitHeight + Style.spacing.sm : 0)
+    // Clipped so the contents are revealed by the row rather than spilling out
+    // of it while it grows. Durations follow the shell's own: 120ms on controls,
+    // OutCubic throughout.
+    clip: true
+
+    Behavior on implicitHeight {
+      NumberAnimation { duration: 160; easing.type: Easing.OutCubic }
+    }
+
+    readonly property real dragStep: header.implicitHeight + Style.spacing.sm
+    readonly property bool dragging: root.draggingIndex === rowIndex
+    // Where this row would land if you let go now.
+    readonly property bool dropTarget: root.draggingIndex !== -1
+      && root.draggingIndex !== rowIndex
+      && root.dropIndex === rowIndex
 
     CursorSurface {
       id: header
-      anchors.left: parent.left
-      anchors.right: parent.right
-      anchors.top: parent.top
+      x: 0
+      width: parent.width
+      y: 0
       implicitHeight: headerBody.implicitHeight + Style.spacing.md * 2
-      hasCursor: presetRow.onRow && root.rowAction === 0 && !presetRow.open
+      z: presetRow.dragging ? 2 : 0
+      opacity: presetRow.dragging ? 0.85 : 1
+
+      Behavior on opacity { NumberAnimation { duration: 120 } }
+      // Only after the drop: animating y while the pointer holds it would put
+      // the row a frame behind the hand.
+      Behavior on y {
+        enabled: !presetRow.dragging
+        NumberAnimation { duration: 160; easing.type: Easing.OutCubic }
+      }
+
+      // Where the row would land. A line rather than shuffling the list under
+      // the cursor: the list moving while you aim at it is how you miss.
+      Rectangle {
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.top: parent.top
+        anchors.topMargin: -Style.spacing.xxs
+        height: Style.space(2)
+        radius: height / 2
+        visible: presetRow.dropTarget
+        color: root.bar ? root.bar.foreground : Color.accent
+      }
+      hasCursor: presetRow.onRow && !presetRow.open
       current: presetRow.open || presetRow.active
       foreground: root.barForeground
       accent: root.bar ? root.bar.foreground : Color.accent
 
       MouseArea {
+        id: headerMouse
         anchors.fill: parent
         hoverEnabled: true
-        cursorShape: Qt.PointingHandCursor
+        cursorShape: drag.active ? Qt.ClosedHandCursor : Qt.PointingHandCursor
         enabled: !presetRow.renaming
+
+        // Only a deliberate pull counts. Below the threshold this is still the
+        // click that launches the project, which is what the row is mostly for.
+        drag.target: header
+        drag.axis: Drag.YAxis
+        drag.threshold: Style.space(8)
+        drag.minimumY: -presetRow.rowIndex * presetRow.dragStep
+        drag.maximumY: (root.presets.length - 1 - presetRow.rowIndex) * presetRow.dragStep
+
         onContainsMouseChanged: if (containsMouse) root.focusRow(presetRow.rowIndex)
-        onClicked: root.launch(presetRow.preset)
+
+        onPositionChanged: {
+          if (!drag.active) return
+          if (root.draggingIndex !== presetRow.rowIndex)
+            root.beginDrag(presetRow.preset, presetRow.rowIndex, presetRow.dragStep)
+          root.dropIndex = presetRow.rowIndex + Math.round(header.y / presetRow.dragStep)
+        }
+
+        onReleased: {
+          if (root.draggingIndex === presetRow.rowIndex) {
+            root.endDrag(presetRow.preset)
+            header.y = 0
+            return
+          }
+          // Clicking the row opens it. Starting a project opens windows and
+          // brings containers up, which is too much for a click that only
+          // meant to look.
+          if (!drag.active) root.toggleExpanded(presetRow.preset)
+        }
       }
 
       Row {
@@ -751,16 +864,25 @@ Panel {
         anchors.rightMargin: Style.spacing.rowPaddingX
         spacing: Style.spacing.xl
 
-        Text {
+        PanelActionButton {
+          id: presetIcon
           anchors.verticalCenter: parent.verticalCenter
-          text: presetRow.preset.icon !== "" ? presetRow.preset.icon : "󱂬"
-          color: root.barForeground
-          font.family: root.fontFamily
-          font.pixelSize: Style.font.iconLarge
+          iconText: presetRow.preset.icon !== "" ? presetRow.preset.icon : "󱂬"
+          fontSize: Style.font.iconLarge
+          tooltipText: presetRow.open && root.expandedMode === "icon" ? "" : "Change icon"
+          foreground: root.barForeground
+          fontFamily: root.fontFamily
+          hasCursor: presetRow.onRow && root.rowAction === 2
+          onHovered: function (isHovered) {
+            if (!isHovered) return
+            root.focusRow(presetRow.rowIndex)
+            root.rowAction = 2
+          }
+          onClicked: root.openIconPicker(presetRow.preset)
         }
 
         Column {
-          width: parent.width - parent.spacing * 2 - Style.space(24) - chevron.width
+          width: parent.width - parent.spacing * 3 - presetIcon.width - chevron.width - play.width
           anchors.verticalCenter: parent.verticalCenter
           spacing: Style.spacing.labelGap
 
@@ -804,10 +926,31 @@ Panel {
         }
 
         PanelActionButton {
+          id: play
+          anchors.verticalCenter: parent.verticalCenter
+          iconText: "󰐊"
+          tooltipText: "Start"
+          foreground: root.barForeground
+          fontFamily: root.fontFamily
+          hasCursor: presetRow.onRow && root.rowAction === 0 && !presetRow.open
+          onHovered: function (isHovered) {
+            if (!isHovered) return
+            root.focusRow(presetRow.rowIndex)
+            root.rowAction = 0
+          }
+          onClicked: root.launch(presetRow.preset)
+        }
+
+        PanelActionButton {
           id: chevron
           anchors.verticalCenter: parent.verticalCenter
-          iconText: presetRow.open ? "󰅃" : "󰅀"
+          iconText: "󰅀"
+          rotation: presetRow.open ? 180 : 0
           tooltipText: presetRow.open ? "" : "Manage"
+
+          Behavior on rotation {
+            NumberAnimation { duration: 160; easing.type: Easing.OutCubic }
+          }
           foreground: root.barForeground
           fontFamily: root.fontFamily
           hasCursor: presetRow.onRow && root.rowAction === 1
@@ -825,7 +968,13 @@ Panel {
     // popup would be a maze; going back is always one Escape.
     Column {
       id: body
-      visible: presetRow.open
+      visible: opacity > 0
+      opacity: presetRow.open ? 1 : 0
+
+      Behavior on opacity {
+        NumberAnimation { duration: 120; easing.type: Easing.OutCubic }
+      }
+
       anchors.left: parent.left
       anchors.right: parent.right
       anchors.top: header.bottom

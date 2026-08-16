@@ -58,4 +58,19 @@ const unlabelled = items.filter(a => !labelled.has(a))
 check("every menu action has a label", unlabelled.length === 0,
   unlabelled.length ? `unlabelled: ${unlabelled.join(", ")}` : "")
 
+// Every name the test harness exports has to exist in Model.js. This is here
+// because the same function was cut twice by the same careless slice of a span
+// between two others, and both times the failure was a stack trace rather than
+// a test.
+const harness = fs.readFileSync(path.join(root, "scripts/test-model"), "utf8")
+const exported = (harness.match(/Object\.assign\(exports, \{([^}]*)\}/) || [, ""])[1]
+  .split(",").map(s => s.trim()).filter(Boolean)
+const modelSource = fs.readFileSync(path.join(root, "Model.js"), "utf8")
+const inModel = new Set(
+  [...modelSource.matchAll(/^function\s+([A-Za-z_$][\w$]*)\s*\(/gm)].map(m => m[1])
+)
+const gone = exported.filter(name => !inModel.has(name))
+check("every function the tests export exists in Model.js", gone.length === 0,
+  gone.length ? `missing: ${gone.join(", ")}` : "")
+
 process.exit(failures === 0 ? 0 : 1)

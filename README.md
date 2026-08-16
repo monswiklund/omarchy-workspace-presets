@@ -24,7 +24,7 @@ opens everything you can do to it, with a readable label instead of a glyph to
 guess at — six icons on a row made a toolbar out of a list.
 
 ```
-▣  Service System                    ⌄
+▣  Service System              ▶   ⌄
    · 󰖯 3   󰡨 1   󰖟 2   󰍹 1
    Contents                       ›
    Docker                        2  ›
@@ -41,12 +41,14 @@ below it — three levels deep in a bar popup is nobody's idea of navigable.
 
 | Action | What it does                                                          |
 |--------|------------------------------------------------------------------------|
-| Launch | Click the row                                                          |
+| Launch | The ▶ button. Clicking the row opens it instead — starting a project   |
+|        | opens windows and brings containers up, which is too much for a click  |
+|        | that only meant to look.                                               |
 | Contents | Everything the preset holds, in the order it launches                |
 | Docker | Tick the Compose projects this preset should bring up                  |
 | Pages  | Paste a URL and press Enter; click a page to remove it                 |
-| Icon   | A grid of glyphs; the current one is marked                            |
-| Order  | Move up and move down; the row follows the preset it moved             |
+| Icon   | Click the preset's own icon; a grid opens with the current one marked  |
+| Order  | Drag a row. Move up and move down remain for the keyboard              |
 | Rename | Inline field on the row itself                                         |
 | Update | Replaces the window rows with the current workspace, keeps the rest    |
 | Close  | Closes the windows and brings the stacks down                          |
@@ -117,7 +119,10 @@ Every glyph here was rendered in the bar's font and checked by eye before it
 went in, the same as the icon set.
 
 A leading `·` and a filled row mark the project you are standing in: every
-window the preset can recognise is on screen. A preset made only of commands it
+window the preset places is on the workspace it places it on. Matching on the
+window class alone would mark every preset holding a terminal, because a
+terminal is always running somewhere — a light that is always on is not a
+light. A preset made only of commands it
 cannot recognise never claims to be up.
 
 The list scrolls once it outgrows the panel. It has to — the panel clamps its

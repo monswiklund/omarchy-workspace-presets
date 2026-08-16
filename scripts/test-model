@@ -344,7 +344,9 @@ check("picking an icon changes only the icon",
   [Model.presetList(iconed)[0].icon, Model.presetList(iconed)[0].name], [icons[3], "P"])
 check("an empty icon is refused",
   Model.withIconSet({ presets: [{ name: "P", apps: [] }] }, 0, "  "), null)
-check("Icon is named on the menu", Model.menuLabel("icon", false), "Icon")
+// The icon moved out of the menu and onto the icon itself, which is the thing
+// being changed — so the menu no longer names it.
+check("the icon is not a menu row any more", Model.menuLabel("icon", false), "")
 
 // "3 apps" on a preset holding two stacks and two pages is true and useless.
 const mixed = Model.parseConfig(JSON.stringify({ presets: [{ name: "P", apps: [
@@ -360,17 +362,25 @@ check("the summary counts each kind apart, as glyphs",
 check("an empty preset says so",
   Model.presetSummary(Model.parseConfig('{"presets":[{"name":"P","apps":[]}]}').presets[0], []), "empty")
 
-// A preset is "up" when every window it can recognise is on screen. One made
-// only of unmatchable commands must never claim to be.
-const up = Model.runningClasses(JSON.stringify([{ class: "com.mitchellh.ghostty" }, { class: "chromium" }]))
-check("a project whose windows are all up is marked", Model.looksActive(mixed, up), true)
+// A preset is "up" when every window it places is on the workspace it places
+// it on. Class alone would mark every preset holding a terminal, because a
+// terminal is always running somewhere.
+const desktopNow = JSON.stringify([
+  { class: "com.mitchellh.ghostty", workspace: { id: 1 } },
+  { class: "chromium", workspace: { id: 1 } }
+])
+check("a project whose windows are all where it puts them is marked",
+  Model.looksActive(mixed, desktopNow), true)
+check("the same windows on another workspace are not this project",
+  Model.looksActive(mixed, JSON.stringify([
+    { class: "com.mitchellh.ghostty", workspace: { id: 7 } },
+    { class: "chromium", workspace: { id: 7 } }])), false)
 check("one missing window is enough to not be",
-  Model.looksActive(mixed, Model.runningClasses('[{"class":"chromium"}]')), false)
+  Model.looksActive(mixed, JSON.stringify([{ class: "chromium", workspace: { id: 1 } }])), false)
 check("stacks and pages do not count towards it",
-  Model.looksActive(Model.parseConfig('{"presets":[{"name":"P","apps":[{"cmd":"x","compose":"/a.yml"}]}]}').presets[0], up), false)
-check("nor does a preset with nothing recognisable",
-  Model.looksActive(Model.parseConfig('{"presets":[{"name":"P","apps":[{"cmd":"ghostty"}]}]}').presets[0], up), false)
-
+  Model.looksActive(Model.parseConfig('{"presets":[{"name":"P","apps":[{"cmd":"x","compose":"/a.yml"}]}]}').presets[0], desktopNow), false)
+check("nor does a preset with nothing placed",
+  Model.looksActive(Model.parseConfig('{"presets":[{"name":"P","apps":[{"cmd":"ghostty"}]}]}').presets[0], desktopNow), false)
 // Order is file order, so moving is by source index like every other edit.
 const three = { presets: [{ name: "A", apps: [] }, { name: "B", apps: [] }, { name: "C", apps: [] }] }
 check("a preset moves up", Model.presetList(Model.withPresetMoved(three, 2, -1)).map(p => p.name), ["A", "C", "B"])

@@ -490,7 +490,6 @@ function menuLabel(action, armed) {
   if (armed) return "Click again to confirm"
   switch (action) {
     case "contents": return "Contents"
-    case "icon": return "Icon"
     case "up": return "Move up"
     case "down": return "Move down"
     case "stacks": return "Docker"
@@ -787,16 +786,32 @@ function presetSummary(preset, plan) {
   return parts.join("   ")
 }
 
-// Whether this project looks like the one you are in. Every window the preset
-// can recognise is on screen, and there is at least one to recognise —
-// otherwise a preset of unmatchable commands would always claim to be up.
-function looksActive(preset, running) {
+// Whether this project looks like the one you are in. Matching on class alone
+// marks every preset holding a terminal, because a terminal is always running
+// somewhere — a light that is always on is not a light. The window has to be on
+// the workspace the preset puts it on.
+function looksActive(preset, clientsJson) {
+  var list
+  try {
+    list = JSON.parse(clientsJson || "[]")
+  } catch (e) {
+    return false
+  }
+  if (!Array.isArray(list)) return false
+
+  var present = {}
+  for (var c = 0; c < list.length; c++) {
+    var name = String((list[c] && list[c]["class"]) || "").toLowerCase()
+    var ws = list[c] && list[c].workspace ? String(list[c].workspace.id) : ""
+    if (name !== "") present[name + "@" + ws] = true
+  }
+
   var known = 0
   for (var i = 0; i < preset.apps.length; i++) {
     var app = preset.apps[i]
-    if (app.compose || app.url || !app.matchClass) continue
+    if (app.compose || app.url || !app.matchClass || !app.workspace) continue
     known++
-    if (running[app.matchClass] !== true) return false
+    if (present[app.matchClass + "@" + app.workspace] !== true) return false
   }
   return known > 0
 }
