@@ -322,8 +322,7 @@ Panel {
     // Windows announce themselves by appearing; a Compose stack coming up is
     // invisible, so without this there is nothing telling you the preset did
     // more than open some apps.
-    Quickshell.execDetached(["omarchy-notification-send", "-u", "low",
-      "Workspace presets", preset.name + " — " + Model.launchTally(steps)])
+    root.notify(preset.name + " — " + Model.launchTally(steps))
 
     root.close()
   }
@@ -988,7 +987,9 @@ Panel {
     }
     readonly property bool destructive: Model.isDestructive(action)
 
-    readonly property string label: Model.menuLabel(action, armed)
+    readonly property string label: action === "update" && root.refreshingIndex === preset.sourceIndex
+      ? "Updating…"
+      : Model.menuLabel(action, armed)
 
     readonly property string detail: {
       if (armed) {

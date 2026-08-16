@@ -345,6 +345,23 @@ function withIconSet(raw, sourceIndex, icon) {
   return withPresetList(raw, list)
 }
 
+// What an update actually did. Without it the row can look untouched — the
+// windows may well be the same ones — and a silent success is indistinguishable
+// from a silent failure.
+function refreshTally(recorded, preset) {
+  var windows = Array.isArray(recorded) ? recorded.length : 0
+  var stacks = presetComposeFiles(preset).length
+  var pages = presetUrls(preset).length
+
+  var kept = []
+  if (stacks > 0) kept.push(stacks + (stacks === 1 ? " stack" : " stacks"))
+  if (pages > 0) kept.push(pages + (pages === 1 ? " page" : " pages"))
+
+  var message = windows + (windows === 1 ? " window" : " windows")
+  if (kept.length > 0) message += ", kept " + kept.join(" and ")
+  return message
+}
+
 // ----------------------------------------------------------------- order
 //
 // The list is file order, so the project you run every day sinks under the one

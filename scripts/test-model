@@ -12,7 +12,7 @@ const vm = require("vm")
 
 const source = fs.readFileSync(path.join(__dirname, "..", "Model.js"), "utf8")
 const Model = {}
-vm.runInNewContext(source.replace(/^\.pragma library\s*/, "") + "\nObject.assign(exports, { parseConfig, runningClasses, launchPlan, pendingSteps, execExpr, focusExpr, presetSummary, renamedPreset, withoutPreset, presetList, parseComposeProjects, withComposeToggled, urlCommand, hasCompose, composeCommand, launchTally, withUrlAdded, withUrlRemoved, presetUrls, browserBaseFor, normalizeUrl, mergedLaunchSteps, withAppsReplaced, closePlan, closeSummary, closeWindowExpr, composeDownCommand, cycleIndex, backOutStep, menuLabel, isDestructive, iconChoices, withIconSet, looksActive, withPresetMoved })", { exports: Model })
+vm.runInNewContext(source.replace(/^\.pragma library\s*/, "") + "\nObject.assign(exports, { parseConfig, runningClasses, launchPlan, pendingSteps, execExpr, focusExpr, presetSummary, renamedPreset, withoutPreset, presetList, parseComposeProjects, withComposeToggled, urlCommand, hasCompose, composeCommand, launchTally, withUrlAdded, withUrlRemoved, presetUrls, browserBaseFor, normalizeUrl, mergedLaunchSteps, withAppsReplaced, closePlan, closeSummary, closeWindowExpr, composeDownCommand, cycleIndex, backOutStep, menuLabel, isDestructive, iconChoices, withIconSet, looksActive, withPresetMoved, refreshTally })", { exports: Model })
 
 let failures = 0
 function check(label, actual, expected) {
@@ -380,5 +380,19 @@ check("and down", Model.presetList(Model.withPresetMoved(three, 0, 1)).map(p => 
 check("off the top is refused", Model.withPresetMoved(three, 0, -1), null)
 check("off the bottom is refused", Model.withPresetMoved(three, 2, 1), null)
 check("the original is left alone", Model.presetList(three).map(p => p.name), ["A", "B", "C"])
+
+// An update can leave the row looking untouched — the windows may well be the
+// same ones — so a silent success is indistinguishable from a silent failure.
+const keeper = Model.parseConfig(JSON.stringify({ presets: [{ name: "P", apps: [
+  { cmd: "d", compose: "/a.yml" },
+  { cmd: "ghostty" },
+  { cmd: "c", url: "https://x" },
+  { cmd: "c", url: "https://y" }
+] }] })).presets[0]
+check("an update says what it recorded and what it kept",
+  Model.refreshTally([1, 2, 3], keeper), "3 windows, kept 1 stack and 2 pages")
+check("with nothing to keep it says only what it recorded",
+  Model.refreshTally([1], Model.parseConfig('{"presets":[{"name":"P","apps":[{"cmd":"x"}]}]}').presets[0]),
+  "1 window")
 
 process.exit(failures === 0 ? 0 : 1)

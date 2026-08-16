@@ -195,6 +195,13 @@ recording is refused rather than emptying the preset.
 Armed like a delete, because it throws away the window rows that are there now
 and a snapshot of the wrong workspace is a silent loss.
 
+**It says what it did.** The row reads *Updating…* while the recorder runs, and
+a notification names the result: *Updated Service System — 4 windows, kept 1
+stack and 2 pages*. An update can leave the row looking untouched — the windows
+may well be the same ones — so a silent success would be indistinguishable from
+a silent failure. A recording that comes back empty leaves the preset standing
+and says so rather than saying nothing.
+
 ## Closing a preset
 
 The inverse of launching: put the project down. Windows are closed and stacks
