@@ -467,6 +467,7 @@ omarchy plugin validate .
 qmllint -I "$OMARCHY_PATH/shell" BarWidget.qml Panel.qml
 scripts/test-model                 # quoting, skip detection, file rewrites, stacks
 scripts/test-terminals             # terminal and browser command-line shapes
+scripts/test-wiring                # every root.x() the panel calls exists
 ```
 
 Saving any file under `~/.config/omarchy/plugins/` hot-reloads the plugin. If a

@@ -1,0 +1,61 @@
+#!/usr/bin/env node
+// Every root.something() the panel calls must exist as a function on the panel.
+//
+// This exists because it did not. A rewrite of one block silently swallowed
+// four functions, and two menu actions became TypeErrors that only showed up in
+// the shell log — the buttons looked fine and did nothing. qmllint does not
+// catch it: the call is legal QML, it just fails at the moment you click.
+
+const fs = require("fs")
+const path = require("path")
+
+const root = path.join(__dirname, "..")
+let failures = 0
+
+function check(label, ok, detail) {
+  if (!ok) failures++
+  console.log(`${ok ? "ok  " : "FAIL"} ${label}`)
+  if (!ok && detail) console.log(`     ${detail}`)
+}
+
+for (const file of ["Panel.qml", "BarWidget.qml"]) {
+  const source = fs.readFileSync(path.join(root, file), "utf8")
+
+  const defined = new Set(
+    [...source.matchAll(/^\s*function\s+([A-Za-z_$][\w$]*)\s*\(/gm)].map(m => m[1])
+  )
+  // Properties are callable-looking too when they hold a value, but a call
+  // needs a function; property reads are filtered out by the "(" in the match.
+  const called = new Set(
+    [...source.matchAll(/\broot\.([A-Za-z_$][\w$]*)\s*\(/g)].map(m => m[1])
+  )
+
+  // Inherited from qs.Ui.Panel, which the QML type extends.
+  const inherited = new Set(["open", "close", "toggle", "closeForPopoutSwitch", "setting"])
+  const missing = [...called].filter(name => !defined.has(name) && !inherited.has(name)).sort()
+  check(`${file}: every root.x() it calls is defined`, missing.length === 0,
+    missing.length ? `missing: ${missing.join(", ")}` : "")
+}
+
+// The menu is a list of strings dispatched through a switch. A row that names
+// an action the switch does not handle is a row that does nothing when clicked.
+const panel = fs.readFileSync(path.join(root, "Panel.qml"), "utf8")
+const items = (panel.match(/menuItems:\s*\[([^\]]*)\]/) || [, ""])[1]
+  .split(",").map(s => s.trim().replace(/^"|"$/g, "")).filter(Boolean)
+const handled = new Set(
+  [...panel.matchAll(/case\s+"([a-z]+)":/g)].map(m => m[1])
+)
+const unhandled = items.filter(a => !handled.has(a))
+check("every menu action is handled", unhandled.length === 0,
+  unhandled.length ? `unhandled: ${unhandled.join(", ")}` : "")
+
+// And every action has a label, or the row renders blank.
+const model = fs.readFileSync(path.join(root, "Model.js"), "utf8")
+const labelled = new Set(
+  [...model.slice(model.indexOf("function menuLabel")).matchAll(/case\s+"([a-z]+)":/g)].map(m => m[1])
+)
+const unlabelled = items.filter(a => !labelled.has(a))
+check("every menu action has a label", unlabelled.length === 0,
+  unlabelled.length ? `unlabelled: ${unlabelled.join(", ")}` : "")
+
+process.exit(failures === 0 ? 0 : 1)

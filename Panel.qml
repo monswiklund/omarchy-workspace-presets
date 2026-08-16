@@ -271,6 +271,96 @@ Panel {
 
   // Picking an icon keeps the row open: you want to see it land on the row you
   // are looking at, and probably try another.
+  // ---- Pages
+
+  function addUrl(preset, url) {
+    var next = Model.withUrlAdded(root.rawConfig, preset.sourceIndex, url)
+    // A blank or already-present address is not an error worth a dialog; the
+    // field simply keeps what you typed so you can see why nothing landed.
+    if (next) root.adoptConfig(next)
+    return next !== null
+  }
+
+  function removeUrl(preset, url) {
+    var next = Model.withUrlRemoved(root.rawConfig, preset.sourceIndex, url)
+    if (next) root.adoptConfig(next)
+  }
+
+  // ---- Closing
+
+  function closePlanFor(preset) {
+    return Model.closePlan(preset, root.clientsJson)
+  }
+
+  function requestClose(preset) {
+    root.disarm()
+    root.renamingIndex = -1
+    if (root.closeTarget !== preset.sourceIndex) {
+      root.closeTarget = preset.sourceIndex
+      root.refreshRunning()
+      return
+    }
+    root.closeTarget = -1
+
+    var plan = root.closePlanFor(preset)
+    // close, never kill: an editor with unsaved work gets to say so.
+    for (var w = 0; w < plan.windows.length; w++)
+      Quickshell.execDetached(["hyprctl", "dispatch", Model.closeWindowExpr(plan.windows[w].address)])
+    for (var s = 0; s < plan.stacks.length; s++)
+      Quickshell.execDetached(["hyprctl", "dispatch",
+        Model.execExpr({ cmd: Model.composeDownCommand(plan.stacks[s]), workspace: "" })])
+
+    root.notify("Closed " + preset.name + " — " + Model.closeSummary(plan))
+    root.close()
+  }
+
+  // ---- Refresh from the current workspace
+
+  function requestRefresh(preset) {
+    root.disarm()
+    root.renamingIndex = -1
+    if (root.refreshTarget !== preset.sourceIndex) {
+      root.refreshTarget = preset.sourceIndex
+      return
+    }
+    root.refreshTarget = -1
+    if (refreshProc.running) return
+    root.refreshingIndex = preset.sourceIndex
+    refreshProc.running = true
+  }
+
+  function applyRefresh(json) {
+    var index = root.refreshingIndex
+    root.refreshingIndex = -1
+    if (index === -1) return
+
+    var preset = root.presetBySourceIndex(index)
+    var name = preset ? preset.name : "preset"
+
+    var recorded
+    try {
+      recorded = JSON.parse(json || "[]")
+    } catch (e) {
+      recorded = null
+    }
+
+    var next = recorded ? Model.withAppsReplaced(root.rawConfig, index, recorded) : null
+    if (!next) {
+      // A refusal is as important to say as a success: an empty recording
+      // leaves the preset standing, and silence would read as a broken button.
+      root.notify(name + " — nothing recorded, left as it was")
+      return
+    }
+
+    root.adoptConfig(next)
+    root.notify("Updated " + name + " — " + Model.refreshTally(recorded, preset))
+  }
+
+  function notify(message) {
+    Quickshell.execDetached(["omarchy-notification-send", "-u", "low",
+      "Workspace presets", message])
+  }
+
   // The row follows the preset it moved, so a second press keeps moving the
   // same one instead of whatever slid into its place.
   function movePreset(preset, delta) {
