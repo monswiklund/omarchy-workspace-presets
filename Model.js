@@ -345,6 +345,25 @@ function withIconSet(raw, sourceIndex, icon) {
   return withPresetList(raw, list)
 }
 
+// ----------------------------------------------------------------- order
+//
+// The list is file order, so the project you run every day sinks under the one
+// you ran once. Moving is by source index, like every other edit, and a move
+// off either end is refused rather than wrapped — a list that wraps while you
+// hold a key loses your place.
+
+function withPresetMoved(raw, sourceIndex, delta) {
+  var list = presetList(raw).slice()
+  var target = sourceIndex + delta
+  if (sourceIndex < 0 || sourceIndex >= list.length) return null
+  if (target < 0 || target >= list.length) return null
+
+  var moving = list[sourceIndex]
+  list.splice(sourceIndex, 1)
+  list.splice(target, 0, moving)
+  return withPresetList(raw, list)
+}
+
 // ------------------------------------------------------------ navigation
 //
 // The panel's own state machine, kept here because it is where the tests are.
@@ -376,6 +395,8 @@ function menuLabel(action, armed) {
   if (armed) return "Click again to confirm"
   switch (action) {
     case "icon": return "Icon"
+    case "up": return "Move up"
+    case "down": return "Move down"
     case "stacks": return "Docker"
     case "pages": return "Pages"
     case "rename": return "Rename"
@@ -638,22 +659,51 @@ function focusExpr(workspace) {
 // writes starts life with every app already running. "0 of 4" is accurate and
 // reads like a fault; say what is actually true instead.
 function presetSummary(preset, plan) {
-  var total = preset.apps.length
-  if (total === 0) return "no apps"
+  var windows = 0
+  var stacks = 0
+  var pages = 0
+  for (var i = 0; i < preset.apps.length; i++) {
+    if (preset.apps[i].compose) stacks++
+    else if (preset.apps[i].url) pages++
+    else windows++
+  }
+  if (windows + stacks + pages === 0) return "empty"
 
-  var pending = pendingSteps(plan).length
+  // Counted apart, because "3 apps" on a preset holding two stacks and two
+  // pages is true and useless: you cannot see what it holds without opening it.
+  var parts = []
+  if (windows > 0) {
+    var pending = pendingSteps(plan).length
+    parts.push(pending === 0 && windows > 0 && plan.length > 0
+      ? "all " + windows + " already running"
+      : (pending < windows && pending > 0
+        ? pending + " of " + windows + " to launch"
+        : windows + (windows === 1 ? " app" : " apps")))
+  }
+  if (stacks > 0) parts.push(stacks + (stacks === 1 ? " stack" : " stacks"))
+  if (pages > 0) parts.push(pages + (pages === 1 ? " page" : " pages"))
+
   var workspaces = workspaceRange(preset)
-
-  var count
-  if (pending === 0) count = "all " + total + " already running"
-  else if (pending < total) count = pending + " of " + total + " to launch"
-  else count = total + (total === 1 ? " app" : " apps")
-
-  return workspaces === "" ? count : count + " · " + workspaces
+  if (workspaces !== "") parts.push(workspaces)
+  return parts.join(" · ")
 }
 
-// What the launch notification says. Stacks are counted apart from apps
-// because they are the half you cannot see happen.
+// Whether this project looks like the one you are in. Every window the preset
+// can recognise is on screen, and there is at least one to recognise —
+// otherwise a preset of unmatchable commands would always claim to be up.
+function looksActive(preset, running) {
+  var known = 0
+  for (var i = 0; i < preset.apps.length; i++) {
+    var app = preset.apps[i]
+    if (app.compose || app.url || !app.matchClass) continue
+    known++
+    if (running[app.matchClass] !== true) return false
+  }
+  return known > 0
+}
+
+// What the launch notification says. Stacks and pages are counted apart from
+// apps because they are the half you cannot see happen.
 function launchTally(steps) {
   var apps = 0
   var stacks = 0

@@ -25,7 +25,7 @@ guess at — six icons on a row made a toolbar out of a list.
 
 ```
 ▣  Service System                    ⌄
-   3 apps · 1 stack · ws 1
+   · 3 apps · 1 stack · 2 pages · ws 1
    Docker                        2  ›
    Icon                            ›
    Pages                         2  ›
@@ -44,6 +44,7 @@ below it — three levels deep in a bar popup is nobody's idea of navigable.
 | Docker | Tick the Compose projects this preset should bring up                  |
 | Pages  | Paste a URL and press Enter; click a page to remove it                 |
 | Icon   | A grid of glyphs; the current one is marked                            |
+| Order  | Move up and move down; the row follows the preset it moved             |
 | Rename | Inline field on the row itself                                         |
 | Update | Replaces the window rows with the current workspace, keeps the rest    |
 | Close  | Closes the windows and brings the stacks down                          |
@@ -82,6 +83,21 @@ this plugin does not model, so a preset carrying your own fields survives. The
 panel adopts what it wrote in the same breath rather than waiting to be told —
 a FileView raises no change for its own write, and relying on that once left the
 list showing a preset that was already gone from disk.
+
+### What the list tells you
+
+The summary counts each kind apart — `3 apps · 1 stack · 2 pages · ws 1` —
+because "3 apps" on a preset holding two stacks and two pages is true and
+useless: you cannot see what it holds without opening it.
+
+A leading `·` and a filled row mark the project you are standing in: every
+window the preset can recognise is on screen. A preset made only of commands it
+cannot recognise never claims to be up.
+
+The list scrolls once it outgrows the panel. It has to — the panel clamps its
+height rather than growing, so a plain column would draw the last presets
+nowhere and leave them reachable by nothing. The actions below stay put while
+the projects scroll under them.
 
 ## Presets
 
@@ -234,7 +250,10 @@ pasted address lands in the file the moment you press Enter.
 ## Snapshotting a workspace
 
 "Snapshot this workspace" turns the windows on the workspace you are looking at
-into a preset, named after the workspace and the time. Rename it from the row.
+into a preset, **named after the project directory its terminals were sitting
+in** — a preset called "Workspace 1 2026-08-16 09:00" is a preset you rename
+every time. The timestamp is the fallback for when there was no directory to go
+on, and a name you pass yourself always wins.
 The workspace is kept on every app and as the preset's `focus`, so replaying the
 snapshot puts the windows back where you took them and leaves you on that
 workspace.

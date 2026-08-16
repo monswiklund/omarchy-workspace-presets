@@ -33,7 +33,7 @@ while (($# > 0)); do
       sed -n '2,10p' "$0" | sed 's/^# \?//'
       exit 0
       ;;
-    *) NAME="$1" ;;
+    *) NAME="$1"; NAME_GIVEN=1 ;;
   esac
   shift
 done
@@ -453,6 +453,31 @@ while IFS=$'\t' read -r ws class pid addr floating at size; do
   fi
 done < <(jq -r '.[] | [.ws, .class, .pid, .addr, .floating,
                     (.at | join(",")), (.size | join(","))] | @tsv' <<<"$clients")
+
+# A preset called "Workspace 1 2026-08-16 09:00" is a preset you rename every
+# time. The project is already in the data: the directory the terminals were
+# sitting in. Name it that, and fall back to the timestamp only when there was
+# no directory to go on.
+project_name() {
+  local dir best count top=0
+  declare -A seen
+  for dir in ${captured_dirs[@]+"${captured_dirs[@]}"}; do
+    [[ $dir == "~" ]] && continue
+    dir="${dir##*/}"
+    [[ -n $dir ]] || continue
+    seen[$dir]=$(( ${seen[$dir]:-0} + 1 ))
+  done
+  for dir in "${!seen[@]}"; do
+    count=${seen[$dir]}
+    if ((count > top)); then top=$count; best=$dir; fi
+  done
+  [[ -n ${best:-} ]] && printf '%s' "$best"
+}
+
+if [[ -z ${NAME_GIVEN:-} ]]; then
+  derived=$(project_name || true)
+  [[ -n ${derived:-} ]] && NAME="$derived"
+fi
 
 if [[ $PRINT_ONLY == true ]]; then
   printf '%s' "$apps"

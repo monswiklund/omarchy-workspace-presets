@@ -12,7 +12,7 @@ const vm = require("vm")
 
 const source = fs.readFileSync(path.join(__dirname, "..", "Model.js"), "utf8")
 const Model = {}
-vm.runInNewContext(source.replace(/^\.pragma library\s*/, "") + "\nObject.assign(exports, { parseConfig, runningClasses, launchPlan, pendingSteps, execExpr, focusExpr, presetSummary, renamedPreset, withoutPreset, presetList, parseComposeProjects, withComposeToggled, urlCommand, hasCompose, composeCommand, launchTally, withUrlAdded, withUrlRemoved, presetUrls, browserBaseFor, normalizeUrl, mergedLaunchSteps, withAppsReplaced, closePlan, closeSummary, closeWindowExpr, composeDownCommand, cycleIndex, backOutStep, menuLabel, isDestructive, iconChoices, withIconSet })", { exports: Model })
+vm.runInNewContext(source.replace(/^\.pragma library\s*/, "") + "\nObject.assign(exports, { parseConfig, runningClasses, launchPlan, pendingSteps, execExpr, focusExpr, presetSummary, renamedPreset, withoutPreset, presetList, parseComposeProjects, withComposeToggled, urlCommand, hasCompose, composeCommand, launchTally, withUrlAdded, withUrlRemoved, presetUrls, browserBaseFor, normalizeUrl, mergedLaunchSteps, withAppsReplaced, closePlan, closeSummary, closeWindowExpr, composeDownCommand, cycleIndex, backOutStep, menuLabel, isDestructive, iconChoices, withIconSet, looksActive, withPresetMoved })", { exports: Model })
 
 let failures = 0
 function check(label, actual, expected) {
@@ -345,5 +345,40 @@ check("picking an icon changes only the icon",
 check("an empty icon is refused",
   Model.withIconSet({ presets: [{ name: "P", apps: [] }] }, 0, "  "), null)
 check("Icon is named on the menu", Model.menuLabel("icon", false), "Icon")
+
+// "3 apps" on a preset holding two stacks and two pages is true and useless.
+const mixed = Model.parseConfig(JSON.stringify({ presets: [{ name: "P", apps: [
+  { cmd: "docker compose -f /a.yml up -d", compose: "/a.yml" },
+  { cmd: "ghostty", workspace: 1, class: "com.mitchellh.ghostty" },
+  { cmd: "chromium", workspace: 1, class: "chromium" },
+  { cmd: "chromium 'https://x.dev'", url: "https://x.dev" },
+  { cmd: "chromium 'https://y.dev'", url: "https://y.dev" }
+] }] })).presets[0]
+check("the summary counts each kind apart",
+  Model.presetSummary(mixed, Model.launchPlan(mixed, {}, false)),
+  "2 apps · 1 stack · 2 pages · ws 1")
+check("an empty preset says so",
+  Model.presetSummary(Model.parseConfig('{"presets":[{"name":"P","apps":[]}]}').presets[0], []), "empty")
+
+// A preset is "up" when every window it can recognise is on screen. One made
+// only of unmatchable commands must never claim to be.
+const up = Model.runningClasses(JSON.stringify([{ class: "com.mitchellh.ghostty" }, { class: "chromium" }]))
+check("a project whose windows are all up is marked", Model.looksActive(mixed, up), true)
+check("one missing window is enough to not be",
+  Model.looksActive(mixed, Model.runningClasses('[{"class":"chromium"}]')), false)
+check("stacks and pages do not count towards it",
+  Model.looksActive(Model.parseConfig('{"presets":[{"name":"P","apps":[{"cmd":"x","compose":"/a.yml"}]}]}').presets[0], up), false)
+check("nor does a preset with nothing recognisable",
+  Model.looksActive(Model.parseConfig('{"presets":[{"name":"P","apps":[{"cmd":"ghostty"}]}]}').presets[0], up), false)
+
+// Order is file order, so moving is by source index like every other edit.
+const three = { presets: [{ name: "A", apps: [] }, { name: "B", apps: [] }, { name: "C", apps: [] }] }
+check("a preset moves up", Model.presetList(Model.withPresetMoved(three, 2, -1)).map(p => p.name), ["A", "C", "B"])
+check("and down", Model.presetList(Model.withPresetMoved(three, 0, 1)).map(p => p.name), ["B", "A", "C"])
+// Refused rather than wrapped: a list that wraps while you hold a key loses
+// your place.
+check("off the top is refused", Model.withPresetMoved(three, 0, -1), null)
+check("off the bottom is refused", Model.withPresetMoved(three, 2, 1), null)
+check("the original is left alone", Model.presetList(three).map(p => p.name), ["A", "B", "C"])
 
 process.exit(failures === 0 ? 0 : 1)

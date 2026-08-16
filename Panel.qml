@@ -64,7 +64,7 @@ Panel {
   property int menuCursor: 0
   readonly property bool expanded: expandedIndex !== -1
 
-  readonly property var menuItems: ["stacks", "pages", "icon", "rename", "update", "close", "delete"]
+  readonly property var menuItems: ["stacks", "pages", "icon", "rename", "up", "down", "update", "close", "delete"]
 
   // Destructive and lossy actions arm first; the row's own label says what the
   // second click will do.
@@ -251,6 +251,8 @@ Panel {
 
     switch (root.menuItems[root.menuCursor]) {
       case "icon": return root.openMode("icon", preset)
+      case "up": return root.movePreset(preset, -1)
+      case "down": return root.movePreset(preset, 1)
       case "stacks": return root.openMode("stacks", preset)
       case "pages": return root.openMode("pages", preset)
       case "rename": return root.openMode("rename", preset)
@@ -269,6 +271,16 @@ Panel {
 
   // Picking an icon keeps the row open: you want to see it land on the row you
   // are looking at, and probably try another.
+  // The row follows the preset it moved, so a second press keeps moving the
+  // same one instead of whatever slid into its place.
+  function movePreset(preset, delta) {
+    var next = Model.withPresetMoved(root.rawConfig, preset.sourceIndex, delta)
+    if (!next) return
+    root.expandedIndex = preset.sourceIndex + delta
+    root.cursorIndex = Math.max(0, Math.min(root.cursorIndex + delta, root.presets.length - 1))
+    root.adoptConfig(next)
+  }
+
   function setIcon(preset, icon) {
     var next = Model.withIconSet(root.rawConfig, preset.sourceIndex, icon)
     if (next) root.adoptConfig(next)
@@ -538,20 +550,35 @@ Panel {
           wrapMode: Text.WordWrap
         }
 
-        Column {
+        // A ListView rather than a Repeater in a Column: the panel clamps its
+        // height instead of growing, so anything past the clamp in a plain
+        // column is drawn nowhere and reachable by nothing. The actions below
+        // stay put while the projects scroll under them.
+        ListView {
+          id: presetList
           width: parent.width
+          height: Math.min(contentHeight, Style.space(300))
           spacing: Style.spacing.sm
+          clip: true
+          boundsBehavior: Flickable.StopAtBounds
+          interactive: contentHeight > height
+          model: root.presets
 
-          Repeater {
-            model: root.presets
+          // Keyboard navigation moves the cursor, not the view, so the view has
+          // to follow it — a selection you cannot see is a selection you lose.
+          currentIndex: root.cursorIndex < root.presets.length ? root.cursorIndex : -1
+          highlightFollowsCurrentItem: true
+          preferredHighlightBegin: 0
+          preferredHighlightEnd: height
+          highlightRangeMode: ListView.ApplyRange
 
-            PresetRow {
-              required property var modelData
-              required property int index
-              width: parent.width
-              preset: modelData
-              rowIndex: index
-            }
+          delegate: PresetRow {
+            required property var modelData
+            required property int index
+            width: presetList.width
+            height: implicitHeight
+            preset: modelData
+            rowIndex: index
           }
         }
 
@@ -593,6 +620,9 @@ Panel {
     readonly property bool open: root.expandedIndex === preset.sourceIndex
     readonly property bool renaming: root.renamingIndex === preset.sourceIndex
     readonly property var urls: Model.presetUrls(preset)
+    // Which project you are standing in, answered at a glance rather than by
+    // reading five rows and remembering what you opened.
+    readonly property bool active: Model.looksActive(preset, root.running)
 
     implicitHeight: header.implicitHeight + (open ? body.implicitHeight + Style.spacing.sm : 0)
 
@@ -603,7 +633,7 @@ Panel {
       anchors.top: parent.top
       implicitHeight: headerBody.implicitHeight + Style.spacing.md * 2
       hasCursor: presetRow.onRow && root.rowAction === 0 && !presetRow.open
-      current: presetRow.open
+      current: presetRow.open || presetRow.active
       foreground: root.barForeground
       accent: root.bar ? root.bar.foreground : Color.accent
 
@@ -670,8 +700,8 @@ Panel {
 
           Text {
             width: parent.width
-            text: Model.presetSummary(presetRow.preset, presetRow.plan)
-            color: Qt.darker(root.barForeground, 1.5)
+            text: (presetRow.active ? "· " : "") + Model.presetSummary(presetRow.preset, presetRow.plan)
+            color: Qt.darker(root.barForeground, presetRow.active ? 1.2 : 1.5)
             font.family: root.fontFamily
             font.pixelSize: Style.font.caption
             elide: Text.ElideRight
