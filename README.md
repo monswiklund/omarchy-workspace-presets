@@ -4,6 +4,25 @@ A bar widget for Omarchy Quattro. Click it, pick a project, and every app in
 that preset opens on the workspace you assigned it — without the screen
 following along while they start.
 
+## Requirements
+
+| Needed for | What |
+|---|---|
+| Everything | Omarchy **Quattro** — the shell plugin system does not exist before it |
+| Snapshots | `hyprctl` and `jq`, both already on an Omarchy install |
+| Docker rows | `docker compose`, only if you tick a stack; the picker is empty without it |
+| Notifications | `omarchy-notification-send`, and it degrades to silence without it |
+
+No other dependencies, nothing is downloaded at runtime, and nothing runs with
+`sudo`. The plugin writes exactly one file of its own,
+`~/.config/omarchy/workspace-presets.json`, and never edits anything else you
+own — enabling and placing the widget is Omarchy's own `shell.json` handling,
+not this plugin's.
+
+Terminal support is a small table: **ghostty, foot and alacritty** are verified.
+An unrecognised terminal still works, it just records without a directory. See
+[Other terminals and browsers](#other-terminals-and-browsers).
+
 ## Install
 
 ```sh
