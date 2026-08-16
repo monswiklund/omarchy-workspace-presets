@@ -29,7 +29,6 @@ guess at — six icons on a row made a toolbar out of a list.
    Contents                       ›
    Docker                        2  ›
    Pages                         2  ›
-   Rename
    Update from this workspace
    Close project
    Delete
@@ -48,7 +47,7 @@ below it — three levels deep in a bar popup is nobody's idea of navigable.
 | Pages  | Paste a URL and press Enter; click a page to remove it                 |
 | Icon   | Click the preset's own icon; a grid opens with the current one marked  |
 | Order  | Drag a row; the drop commits it                                        |
-| Rename | Inline field on the row itself                                         |
+| Rename | Double-click the name                                                  |
 | Update | Replaces the window rows with the current workspace, keeps the rest    |
 | Close  | Closes the windows and brings the stacks down                          |
 | Delete | Removes the preset, not the windows                                    |

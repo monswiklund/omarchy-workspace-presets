@@ -64,7 +64,7 @@ Panel {
   property int menuCursor: 0
   readonly property bool expanded: expandedIndex !== -1
 
-  readonly property var menuItems: ["contents", "stacks", "pages", "rename", "update", "close", "delete"]
+  readonly property var menuItems: ["contents", "stacks", "pages", "update", "close", "delete"]
 
   // Destructive and lossy actions arm first; the row's own label says what the
   // second click will do.
@@ -279,7 +279,6 @@ Panel {
       case "contents": return root.openMode("contents", preset)
       case "stacks": return root.openMode("stacks", preset)
       case "pages": return root.openMode("pages", preset)
-      case "rename": return root.openMode("rename", preset)
       case "update": return root.requestRefresh(preset)
       case "close": return root.requestClose(preset)
       case "delete": return root.requestDelete(preset)
@@ -885,6 +884,7 @@ Panel {
           spacing: Style.spacing.labelGap
 
           Text {
+            id: presetName
             visible: !presetRow.renaming
             width: parent.width
             text: presetRow.preset.name
@@ -892,6 +892,19 @@ Panel {
             font.family: root.fontFamily
             font.pixelSize: Style.font.body
             elide: Text.ElideRight
+
+            // Double-click the name to rename it, the same gesture as renaming
+            // a file and aimed at the thing being renamed. The name is its own
+            // target: a single click here does nothing rather than opening the
+            // row, because letting it open would mean either a flicker on every
+            // rename or holding every click back to see if a second followed.
+            // The caret cursor says the text is the thing you can act on.
+            MouseArea {
+              anchors.fill: parent
+              acceptedButtons: Qt.LeftButton
+              cursorShape: Qt.IBeamCursor
+              onDoubleClicked: root.startRename(presetRow.preset)
+            }
           }
 
           TextField {

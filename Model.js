@@ -491,7 +491,6 @@ function menuLabel(action, armed) {
     case "contents": return "Contents"
     case "stacks": return "Docker"
     case "pages": return "Pages"
-    case "rename": return "Rename"
     case "update": return "Update from this workspace"
     case "close": return "Close project"
     case "delete": return "Delete"
