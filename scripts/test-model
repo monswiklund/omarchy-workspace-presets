@@ -12,7 +12,7 @@ const vm = require("vm")
 
 const source = fs.readFileSync(path.join(__dirname, "..", "Model.js"), "utf8")
 const Model = {}
-vm.runInNewContext(source.replace(/^\.pragma library\s*/, "") + "\nObject.assign(exports, { parseConfig, runningClasses, launchPlan, pendingSteps, execExpr, focusExpr, presetSummary, renamedPreset, withoutPreset, presetList, parseComposeProjects, withComposeToggled, urlCommand, hasCompose, composeCommand, launchTally, withUrlAdded, withUrlRemoved, presetUrls, browserBaseFor, normalizeUrl, mergedLaunchSteps, withAppsReplaced, closePlan, closeSummary, closeWindowExpr, composeDownCommand })", { exports: Model })
+vm.runInNewContext(source.replace(/^\.pragma library\s*/, "") + "\nObject.assign(exports, { parseConfig, runningClasses, launchPlan, pendingSteps, execExpr, focusExpr, presetSummary, renamedPreset, withoutPreset, presetList, parseComposeProjects, withComposeToggled, urlCommand, hasCompose, composeCommand, launchTally, withUrlAdded, withUrlRemoved, presetUrls, browserBaseFor, normalizeUrl, mergedLaunchSteps, withAppsReplaced, closePlan, closeSummary, closeWindowExpr, composeDownCommand, cycleIndex, backOutStep, menuLabel, isDestructive })", { exports: Model })
 
 let failures = 0
 function check(label, actual, expected) {
@@ -305,5 +305,32 @@ check("a tiled window gets no geometry at all",
 check("a floating window with no workspace still floats",
   Model.execExpr(Model.parseConfig('{"presets":[{"name":"P","apps":[{"cmd":"x","floating":true,"size":"10,20"}]}]}').presets[0].apps[0]),
   'hl.dsp.exec_cmd("x", { float = true, size = "10 20" })')
+
+// The panel's own state machine. Delete once lived up in the QML with no
+// coverage, and a user found the bug before a test did.
+check("the cursor wraps off the end", Model.cycleIndex(5, 1, 6), 0)
+check("and off the start", Model.cycleIndex(0, -1, 6), 5)
+check("an empty list has nowhere to go", Model.cycleIndex(0, 1, 0), 0)
+check("ordinary movement is ordinary", Model.cycleIndex(2, 1, 6), 3)
+
+// Backing out one level at a time is what makes arming worth anything: a
+// confirmation you cannot call off is not a confirmation.
+const step = (s) => Model.backOutStep(Object.assign(
+  { renaming: false, armed: false, mode: "menu", expanded: false }, s))
+
+check("an armed confirmation is called off first",
+  step({ armed: true, mode: "stacks", expanded: true }), "disarm")
+check("a rename in progress is cancelled before anything else",
+  step({ renaming: true, armed: true, expanded: true }), "cancel-rename")
+check("a submode returns to the menu", step({ mode: "pages", expanded: true }), "to-menu")
+check("the menu closes the row", step({ expanded: true }), "collapse")
+check("only then does it reach the panel", step({}), "close-panel")
+
+check("an armed row says what the next click does",
+  Model.menuLabel("delete", true), "Click again to confirm")
+check("and otherwise names itself", Model.menuLabel("update", false), "Update from this workspace")
+check("Docker is called Docker, not Stacks", Model.menuLabel("stacks", false), "Docker")
+check("closing and deleting are the destructive pair",
+  ["delete", "close", "rename", "pages"].map(Model.isDestructive), [true, true, false, false])
 
 process.exit(failures === 0 ? 0 : 1)

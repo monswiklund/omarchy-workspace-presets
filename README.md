@@ -47,7 +47,26 @@ below it — three levels deep in a bar popup is nobody's idea of navigable.
 | Close  | Closes the windows and brings the stacks down                          |
 | Delete | Removes the preset, not the windows                                    |
 
-Keyboard: `↑`/`↓` walk the list, `→` opens a row, `Enter` runs what is focused,
+### From a keybinding
+
+A panel you have to open first cannot go on `Super+1`, so presets are also
+addressable by name:
+
+```sh
+omarchy-shell workspace-presets launch "Service System"
+omarchy-shell workspace-presets list     # the names, one per line
+omarchy-shell workspace-presets toggle   # the panel
+```
+
+`launch` answers `ok` or `unknown`, matching case-insensitively on the trimmed
+name. In `~/.config/hypr/bindings.lua`:
+
+```lua
+o.bind("SUPER + code:10", "Service System",
+  hl.dsp.exec_cmd("omarchy-shell workspace-presets launch 'Service System'"))
+```
+
+Keyboard in the panel: `↑`/`↓` walk the list, `→` opens a row, `Enter` runs what is focused,
 `←` and `Esc` back out one level at a time — a submode returns to the menu, the
 menu closes the row, and only then does `Esc` reach the panel. An armed
 confirmation is always one `Esc` from being called off.

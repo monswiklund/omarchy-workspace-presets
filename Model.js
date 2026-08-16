@@ -317,6 +317,50 @@ function withUrlRemoved(raw, sourceIndex, url) {
   return null
 }
 
+// ------------------------------------------------------------ navigation
+//
+// The panel's own state machine, kept here because it is where the tests are.
+// Delete once lived in the QML with no coverage, and a user found it before a
+// test did.
+
+// Cursors wrap: a list you can walk off the end of makes you look at the
+// screen to know where you are.
+function cycleIndex(current, delta, count) {
+  if (count <= 0) return 0
+  var next = current + delta
+  if (next < 0) return count - 1
+  if (next >= count) return 0
+  return next
+}
+
+// Backing out goes one level at a time, and never further than one press. An
+// armed confirmation is always one Escape from being called off, which is the
+// whole reason arming is worth anything.
+function backOutStep(state) {
+  if (state.renaming) return "cancel-rename"
+  if (state.armed) return "disarm"
+  if (state.mode !== "menu") return "to-menu"
+  if (state.expanded) return "collapse"
+  return "close-panel"
+}
+
+function menuLabel(action, armed) {
+  if (armed) return "Click again to confirm"
+  switch (action) {
+    case "stacks": return "Docker"
+    case "pages": return "Pages"
+    case "rename": return "Rename"
+    case "update": return "Update from this workspace"
+    case "close": return "Close project"
+    case "delete": return "Delete"
+  }
+  return ""
+}
+
+function isDestructive(action) {
+  return action === "delete" || action === "close"
+}
+
 // --------------------------------------------------------------- closing
 //
 // The inverse of launching: put the project down. Windows are matched by the

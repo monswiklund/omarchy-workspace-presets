@@ -192,11 +192,18 @@ Panel {
   // Back out one level at a time: a submode returns to the menu, the menu
   // closes the row, and only then does Escape reach the panel.
   function backOut() {
-    if (root.renamingIndex !== -1) return root.cancelRename()
-    if (root.armedDeleteIndex !== -1 || root.closeTarget !== -1 || root.refreshTarget !== -1) return root.disarm()
-    if (root.expandedMode !== "menu") { root.expandedMode = "menu"; root.menuCursor = 0; return }
-    if (root.expanded) return root.collapse()
-    root.close()
+    switch (Model.backOutStep({
+      renaming: root.renamingIndex !== -1,
+      armed: root.armedDeleteIndex !== -1 || root.closeTarget !== -1 || root.refreshTarget !== -1,
+      mode: root.expandedMode,
+      expanded: root.expanded
+    })) {
+      case "cancel-rename": return root.cancelRename()
+      case "disarm": return root.disarm()
+      case "to-menu": root.expandedMode = "menu"; root.menuCursor = 0; return
+      case "collapse": return root.collapse()
+      default: return root.close()
+    }
   }
 
   function openMode(mode, preset) {
@@ -218,10 +225,7 @@ Panel {
   }
 
   function moveMenuCursor(delta) {
-    var count = root.menuLength()
-    if (count === 0) return
-    var next = root.menuCursor + delta
-    root.menuCursor = next < 0 ? count - 1 : (next >= count ? 0 : next)
+    root.menuCursor = Model.cycleIndex(root.menuCursor, delta, root.menuLength())
   }
 
   function activateMenu() {
@@ -366,8 +370,7 @@ Panel {
 
   function moveCursor(delta) {
     if (root.rowCount === 0) return
-    var next = root.cursorIndex + delta
-    root.cursorIndex = next < 0 ? root.rowCount - 1 : (next >= root.rowCount ? 0 : next)
+    root.cursorIndex = Model.cycleIndex(root.cursorIndex, delta, root.rowCount)
     root.rowAction = 0
     root.disarm()
   }
@@ -897,20 +900,9 @@ Panel {
       if (action === "update") return root.refreshTarget === preset.sourceIndex
       return false
     }
-    readonly property bool destructive: action === "delete" || action === "close"
+    readonly property bool destructive: Model.isDestructive(action)
 
-    readonly property string label: {
-      if (armed) return "Click again to confirm"
-      switch (action) {
-        case "stacks": return "Docker"
-        case "pages": return "Pages"
-        case "rename": return "Rename"
-        case "update": return "Update from this workspace"
-        case "close": return "Close project"
-        case "delete": return "Delete"
-      }
-      return ""
-    }
+    readonly property string label: Model.menuLabel(action, armed)
 
     readonly property string detail: {
       if (armed) {
