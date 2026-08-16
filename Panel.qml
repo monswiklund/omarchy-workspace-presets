@@ -64,7 +64,7 @@ Panel {
   property int menuCursor: 0
   readonly property bool expanded: expandedIndex !== -1
 
-  readonly property var menuItems: ["contents", "stacks", "pages", "rename", "up", "down", "update", "close", "delete"]
+  readonly property var menuItems: ["contents", "stacks", "pages", "rename", "update", "close", "delete"]
 
   // Destructive and lossy actions arm first; the row's own label says what the
   // second click will do.
@@ -277,8 +277,6 @@ Panel {
 
     switch (root.menuItems[root.menuCursor]) {
       case "contents": return root.openMode("contents", preset)
-      case "up": return root.movePreset(preset, -1)
-      case "down": return root.movePreset(preset, 1)
       case "stacks": return root.openMode("stacks", preset)
       case "pages": return root.openMode("pages", preset)
       case "rename": return root.openMode("rename", preset)

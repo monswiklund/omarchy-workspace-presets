@@ -364,10 +364,9 @@ function refreshTally(recorded, preset) {
 
 // ----------------------------------------------------------------- order
 //
-// The list is file order, so the project you run every day sinks under the one
-// you ran once. Moving is by source index, like every other edit, and a move
-// off either end is refused rather than wrapped — a list that wraps while you
-// hold a key loses your place.
+// Reordering is a drag now; this is what the drop commits. A move off either
+// end is refused rather than wrapped, so a row dragged past the top settles at
+// the top instead of reappearing at the bottom.
 
 function withPresetMoved(raw, sourceIndex, delta) {
   var list = presetList(raw).slice()
@@ -490,8 +489,6 @@ function menuLabel(action, armed) {
   if (armed) return "Click again to confirm"
   switch (action) {
     case "contents": return "Contents"
-    case "up": return "Move up"
-    case "down": return "Move down"
     case "stacks": return "Docker"
     case "pages": return "Pages"
     case "rename": return "Rename"

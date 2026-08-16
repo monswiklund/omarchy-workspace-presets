@@ -28,7 +28,6 @@ guess at — six icons on a row made a toolbar out of a list.
    · 󰖯 3   󰡨 1   󰖟 2   󰍹 1
    Contents                       ›
    Docker                        2  ›
-   Icon                            ›
    Pages                         2  ›
    Rename
    Update from this workspace
@@ -48,7 +47,7 @@ below it — three levels deep in a bar popup is nobody's idea of navigable.
 | Docker | Tick the Compose projects this preset should bring up                  |
 | Pages  | Paste a URL and press Enter; click a page to remove it                 |
 | Icon   | Click the preset's own icon; a grid opens with the current one marked  |
-| Order  | Drag a row. Move up and move down remain for the keyboard              |
+| Order  | Drag a row; the drop commits it                                        |
 | Rename | Inline field on the row itself                                         |
 | Update | Replaces the window rows with the current workspace, keeps the rest    |
 | Close  | Closes the windows and brings the stacks down                          |
@@ -73,7 +72,10 @@ o.bind("SUPER + code:10", "Service System",
   hl.dsp.exec_cmd("omarchy-shell workspace-presets launch 'Service System'"))
 ```
 
-Keyboard in the panel: `↑`/`↓` walk the list, `→` opens a row, `Enter` runs what is focused,
+Reordering is the one thing the keyboard cannot do — it is a drag, and the menu
+rows that used to duplicate it are gone.
+
+Keyboard in the panel: `↑`/`↓` walk the list, `→` walks the row's controls, `Enter` runs what is focused,
 `←` and `Esc` back out one level at a time — a submode returns to the menu, the
 menu closes the row, and only then does `Esc` reach the panel. An armed
 confirmation is always one `Esc` from being called off.
