@@ -1,0 +1,511 @@
+#!/bin/bash
+# Snapshot the windows open right now into workspace-presets.json as a preset.
+#
+#   record-preset            the workspace you are on
+#   record-preset NAME       name it yourself
+#   record-preset --all      every workspace at once
+#   record-preset --print    write the app list to stdout, touch no file
+#
+# One workspace is the default because that is the scope a preset usually
+# means and the one you can verify by eye before saving it. --all sweeps the
+# whole desktop, which is a restore-my-session capture rather than a project.
+#
+# The command line comes from /proc/<pid>/cmdline rather than being guessed
+# from the window class, which is the difference between "chromium" and the
+# chromium invocation that actually opened your app. Arguments are joined on
+# spaces, so an argument containing a space comes back unquoted — the preset
+# is a starting point you edit, and the editor opens on it for that reason.
+
+set -euo pipefail
+
+CONFIG="${OMARCHY_WORKSPACE_PRESETS:-$HOME/.config/omarchy/workspace-presets.json}"
+
+CURRENT_ONLY=true
+PRINT_ONLY=false
+NAME=""
+while (($# > 0)); do
+  case "$1" in
+    --all) CURRENT_ONLY=false ;;
+    # For updating a preset in place: the panel wants the windows, not a new
+    # preset, and keeps the stacks and pages already on the one being updated.
+    --print) PRINT_ONLY=true ;;
+    -h | --help)
+      sed -n '2,10p' "$0" | sed 's/^# \?//'
+      exit 0
+      ;;
+    *) NAME="$1" ;;
+  esac
+  shift
+done
+
+notify() {
+  if command -v omarchy-notification-send >/dev/null 2>&1; then
+    omarchy-notification-send -u "${2:-low}" "Workspace presets" "$1"
+  else
+    echo "$1"
+  fi
+}
+
+for tool in hyprctl jq; do
+  command -v "$tool" >/dev/null 2>&1 || { notify "$tool is required to record" critical; exit 1; }
+done
+
+mkdir -p "$(dirname "$CONFIG")"
+[[ -f $CONFIG ]] || printf '{\n  "version": 1,\n  "presets": []\n}\n' >"$CONFIG"
+
+focus=$(hyprctl activeworkspace -j | jq '.id')
+
+if [[ $CURRENT_ONLY == true ]]; then
+  scope=$focus
+  : "${NAME:=Workspace $focus $(date '+%Y-%m-%d %H:%M')}"
+else
+  scope=0
+  : "${NAME:=Session $(date '+%Y-%m-%d %H:%M')}"
+fi
+
+all_clients=$(hyprctl clients -j)
+
+# Named workspaces only: a special workspace has a negative id and is a
+# scratchpad, not part of a project layout.
+# Every window, not one row per process: a terminal keeps one process for all
+# of its windows, and each window is its own thing to bring back.
+clients=$(jq -c --argjson scope "$scope" '
+  [ .[]
+    | select(.workspace.id > 0)
+    | select($scope == 0 or .workspace.id == $scope)
+    | { ws: .workspace.id, class: .class, pid: .pid, addr: .address,
+        floating: .floating, at: .at, size: .size }
+  ]
+  | sort_by(.ws)' <<<"$all_clients")
+
+# A single-instance app's /proc entry belongs to its daemon, and a daemon is
+# started with the flags that tell it not to put a window on screen. Replaying
+# those verbatim gives a preset that runs and opens nothing — which is exactly
+# what it looks like when the whole feature seems broken. Drop them, so the
+# recorded line is the one that opens a window.
+strip_daemon_flags() {
+  local out=()
+  local arg
+  while IFS= read -r -d '' arg; do
+    case "$arg" in
+      --initial-window=false) continue ;;
+      --gtk-single-instance=*) continue ;;
+    esac
+    out+=("$arg")
+  done
+  printf '%s' "${out[*]}"
+}
+
+# A terminal that reopens in / is a terminal you have to cd in every morning,
+# which is most of what a project preset is supposed to save you. The directory
+# is not on the window — a terminal multiplexing windows in one process has one
+# /proc entry — but it is on the shells running inside it, so read it there.
+# A window this plugin restored carries its own "-e <command>", and everything
+# after -e belongs to that command. Cut it before adding the current one, or
+# the line grows a second command every time it is re-recorded.
+strip_exec_flag() {
+  printf '%s' "${1%% -e *}"
+}
+
+strip_working_dir() {
+  local out=()
+  local skip_next=false
+  local arg
+  for arg in $1; do
+    if [[ $skip_next == true ]]; then skip_next=false; continue; fi
+    case "$arg" in
+      --working-directory | --directory | --cwd) skip_next=true; continue ;;
+      --working-directory=* | --directory=* | --cwd=*) continue ;;
+      -D) skip_next=true; continue ;;
+    esac
+    out+=("$arg")
+  done
+  printf '%s' "${out[*]}"
+}
+
+
+# How each terminal says "start here". `-e` needs no table: ghostty and
+# alacritty implement it and foot accepts it for xterm compatibility, so the
+# command half is already common ground. The directory half is not, and the
+# space-versus-equals difference is exactly the kind that fails silently.
+#
+# An unrecognised terminal records without a directory rather than guessing.
+# A preset that opens a terminal in the wrong place is a nuisance; one that
+# writes ghostty syntax at kitty is broken. Adding a terminal is one line here.
+working_directory_flag() {
+  local binary="${1##*/}" dir="$2"
+  case "$binary" in
+    ghostty | foot) printf -- '--working-directory=%s' "$(printf '%q' "$dir")" ;;
+    alacritty) printf -- '--working-directory %s' "$(printf '%q' "$dir")" ;;
+    *) return 1 ;;
+  esac
+}
+
+# Where a Chromium-family browser keeps the profile it used last. Firefox is
+# not in here: it names profiles with -P and keeps them in an ini file, so it
+# gets its own branch below rather than a row that almost fits.
+browser_config_dir() {
+  case "${1##*/}" in
+    chromium | chromium-browser) printf '%s/.config/chromium' "$HOME" ;;
+    google-chrome | google-chrome-stable | chrome) printf '%s/.config/google-chrome' "$HOME" ;;
+    brave | brave-browser) printf '%s/.config/BraveSoftware/Brave-Browser' "$HOME" ;;
+    microsoft-edge | microsoft-edge-stable) printf '%s/.config/microsoft-edge' "$HOME" ;;
+    vivaldi | vivaldi-stable) printf '%s/.config/vivaldi' "$HOME" ;;
+    *) return 1 ;;
+  esac
+}
+
+# A browser with more than one profile and no profile flag opens the chooser
+# instead of a browser, which stops a preset dead. The profile is not in the
+# running process, so the last one used is the best guess available — wrong
+# sometimes, but a browser every time beats a picker every time.
+add_profile_flag() {
+  local cmd="$1" binary="${1%% *}" config state profile count
+
+  case "$cmd" in
+    *--profile-directory=* | *" -P "*) printf '%s' "$cmd"; return ;;
+  esac
+
+  # Firefox: named profiles in an ini file, selected with -P.
+  case "${binary##*/}" in
+    firefox | firefox-esr | librewolf)
+      local ini="$HOME/.mozilla/firefox/profiles.ini"
+      [[ -r $ini ]] || { printf '%s' "$cmd"; return; }
+      count=$(grep -c '^\[Profile' "$ini" 2>/dev/null || echo 0)
+      [[ ${count:-0} -gt 1 ]] || { printf '%s' "$cmd"; return; }
+      profile=$(awk -F= '/^\[Install/{i=1} i&&/^Default=/{print $2; exit}' "$ini" 2>/dev/null)
+      [[ -n $profile ]] || { printf '%s' "$cmd"; return; }
+      # Install sections name the profile by path; map it back to a name.
+      profile=$(awk -F= -v p="$profile" '/^\[Profile/{n=""} /^Name=/{n=$2} /^Path=/{if ($2==p && n!="") {print n; exit}}' "$ini" 2>/dev/null)
+      [[ -n $profile ]] || { printf '%s' "$cmd"; return; }
+      printf '%s -P %s' "$cmd" "$(printf '%q' "$profile")"
+      return
+      ;;
+  esac
+
+  config=$(browser_config_dir "$binary") || { printf '%s' "$cmd"; return; }
+  state="$config/Local State"
+  [[ -r $state ]] || { printf '%s' "$cmd"; return; }
+
+  count=$(jq '.profile.info_cache | length' "$state" 2>/dev/null || echo 0)
+  [[ ${count:-0} -gt 1 ]] || { printf '%s' "$cmd"; return; }
+
+  profile=$(jq -r '.profile.last_used // empty' "$state" 2>/dev/null)
+  [[ -n $profile ]] || { printf '%s' "$cmd"; return; }
+
+  printf '%s --profile-directory=%s' "$cmd" "$(printf '%q' "$profile")"
+}
+
+# Ghostty runs every window in one process, so /proc cannot say which window
+# sits in which directory. The window title can: it shows the running command
+# when there is one, and the shell's directory when there is not.
+#
+#   title "claude"                     -> the shell whose child is claude
+#   title "~"                          -> the shell sitting in $HOME
+#   title "sportson/view  main"        -> the shell whose cwd ends in that path
+#
+# Everything from the first space on is decoration — the prompt appends the git
+# branch behind a Nerd Font glyph — so it is cut before matching.
+# Everything inside the terminal that could be a window's session: the shells
+# it runs, and — when there are none — whatever it was started with instead.
+# A window restored as `-e claude` has no shell in it at all, only the command.
+candidates_of() {
+  local root_pid="$1" pid comm dir
+  local shells=() others=()
+  for pid in $(pgrep -P "$root_pid" 2>/dev/null); do
+    [[ " ${used_shells[*]-} " == *" $pid "* ]] && continue
+    dir=$(readlink "/proc/$pid/cwd" 2>/dev/null) || continue
+    [[ -n $dir && -d $dir ]] || continue
+    comm=$(cat "/proc/$pid/comm" 2>/dev/null) || continue
+    case "$comm" in
+      bash | zsh | fish | sh | nu | dash | ksh) shells+=("$pid $dir") ;;
+      *) others+=("$pid $dir") ;;
+    esac
+  done
+  if ((${#shells[@]} > 0)); then
+    printf '%s\n' "${shells[@]}"
+  elif ((${#others[@]} > 0)); then
+    printf '%s\n' "${others[@]}"
+  fi
+}
+
+# A terminal with exactly one window has nothing to disambiguate — the single
+# session inside it is that window's, whatever the title happens to say. Claude
+# Code renames the window to "✳ Claude Code", so this is the only thing that
+# finds a restored assistant session.
+shell_when_unambiguous() {
+  local root_pid="$1"
+  local windows
+  windows=$(jq --argjson pid "$root_pid" '[.[] | select(.pid == $pid)] | length' <<<"$all_clients")
+  [[ $windows -eq 1 ]] || return 1
+  candidates_of "$root_pid" | head -1 | grep . || return 1
+}
+
+# What the title passes could not name. A shell alias makes the window say
+# "dc logs -f" while the process is plainly "docker", and no amount of title
+# reading bridges that. It does not have to: once the identifiable windows are
+# bound, the ones left over and the sessions left over are the same set, so
+# pairing them off covers every window. Only done when the counts agree —
+# otherwise something is unaccounted for and a guess would be a wrong project.
+shell_leftover() {
+  local root_pid="$1" windows=0 free=0 addr line
+
+  while read -r addr; do
+    [[ -n ${dir_for_addr[$addr]-} ]] || windows=$((windows + 1))
+  done < <(jq -r --argjson pid "$root_pid" '.[] | select(.pid == $pid) | .address' <<<"$all_clients")
+
+  while read -r line; do
+    [[ -n $line ]] && free=$((free + 1))
+  done < <(candidates_of "$root_pid")
+
+  [[ $windows -gt 0 && $windows -eq $free ]] || return 1
+  candidates_of "$root_pid" | head -1 | grep . || return 1
+}
+
+shell_by_command() {
+  local root_pid="$1" title="$2" line pid child head
+  # The shell titles the window with the whole command line, while /proc keeps
+  # only the executable name — and truncated at that. "docker compose logs -f"
+  # is a window whose process is called plainly "docker", so the comparison is
+  # against the first word of the title, not the whole of it.
+  head="${title%% *}"
+  head="${head##*/}"
+  [[ -n $head ]] || return 1
+
+  while read -r line; do
+    [[ -n $line ]] || continue
+    pid="${line%% *}"
+    for child in $(pgrep -P "$pid" 2>/dev/null); do
+      if [[ "$(cat "/proc/$child/comm" 2>/dev/null)" == "$head" ]]; then
+        printf '%s' "$line"
+        return 0
+      fi
+    done
+    # The command may be the session itself rather than something under a shell.
+    if [[ "$(cat "/proc/$pid/comm" 2>/dev/null)" == "$head" ]]; then
+      printf '%s' "$line"
+      return 0
+    fi
+  done < <(candidates_of "$root_pid")
+  return 1
+}
+
+shell_by_directory() {
+  local root_pid="$1" title="$2" line dir suffix
+  while read -r line; do
+    [[ -n $line ]] || continue
+    dir="${line#* }"
+    case "$title" in
+      "~") [[ $dir == "$HOME" ]] && { printf '%s' "$line"; return 0; } ;;
+      "~/"*) [[ $dir == "$HOME/${title#\~/}" ]] && { printf '%s' "$line"; return 0; } ;;
+      *)
+        suffix="${title%% *}"; suffix="${suffix#…}"; suffix="${suffix#/}"
+        [[ -n $suffix && ($dir == *"/$suffix" || $dir == "$suffix") ]] \
+          && { printf '%s' "$line"; return 0; }
+        ;;
+    esac
+  done < <(candidates_of "$root_pid")
+  return 1
+}
+
+# What the shell had in the foreground, or the command the window was started
+# with. A terminal that comes back empty is only half the layout — the log tail
+# and the assistant session were the point of the window.
+#
+# Claude Code keeps its conversations per directory, so `--continue` reopens the
+# one that window was in rather than a blank session. Two windows in the same
+# directory both resume the newest one; a running session's id is not readable
+# from the outside.
+as_command() {
+  local cmdline="$1"
+  case "${cmdline%% *}" in
+    */claude | claude) printf 'claude --continue' ;;
+    *) printf '%s' "$cmdline" ;;
+  esac
+}
+
+running_command_of() {
+  local shell_pid="$1" child cmdline comm
+  comm=$(cat "/proc/$shell_pid/comm" 2>/dev/null) || return 1
+
+  # The session is the command itself when no shell was started for it.
+  case "$comm" in
+    bash | zsh | fish | sh | nu | dash | ksh) ;;
+    *)
+      cmdline=$(tr '\0' ' ' <"/proc/$shell_pid/cmdline" 2>/dev/null | sed 's/[[:space:]]*$//')
+      [[ -n $cmdline ]] && { as_command "$cmdline"; return 0; }
+      return 1
+      ;;
+  esac
+
+  for child in $(pgrep -P "$shell_pid" 2>/dev/null); do
+    cmdline=$(tr '\0' ' ' <"/proc/$child/cmdline" 2>/dev/null | sed 's/[[:space:]]*$//')
+    [[ -n $cmdline ]] || continue
+    as_command "$cmdline"
+    return 0
+  done
+  return 1
+}
+
+is_terminal() {
+  local pid="$1" cmd="$2" child comm
+  for child in $(pgrep -P "$pid" 2>/dev/null); do
+    comm=$(cat "/proc/$child/comm" 2>/dev/null) || continue
+    case "$comm" in bash | zsh | fish | sh | nu | dash | ksh) return 0 ;; esac
+  done
+  # A window this plugin restored runs its command instead of a shell, so the
+  # shell test alone would stop recognising it the moment it came back.
+  [[ $cmd == *" -e "* ]] && return 0
+  return 1
+}
+
+# Matched over every window on every workspace, not just the ones being
+# recorded: a shell belongs to exactly one window, and a "~" window here would
+# otherwise claim the shell that belongs to a named window elsewhere. Command
+# titles go first because they are unambiguous; directory titles fill in after.
+declare -A dir_for_addr
+declare -A run_for_addr
+used_shells=()
+
+match_pass() {
+  local matcher="$1" addr pid title_b64 title match
+  while IFS=$'\t' read -r addr pid title_b64; do
+    [[ -n ${dir_for_addr[$addr]-} ]] && continue
+    is_terminal "$pid" "$(tr '\0' ' ' <"/proc/$pid/cmdline" 2>/dev/null)" || continue
+    title=$(printf '%s' "$title_b64" | base64 -d 2>/dev/null || true)
+    if match=$("$matcher" "$pid" "$title"); then
+      used_shells+=("${match%% *}")
+      dir_for_addr[$addr]="${match#* }"
+      run_for_addr[$addr]=$(running_command_of "${match%% *}" || true)
+    fi
+  done < <(jq -r '.[] | select(.workspace.id > 0)
+                      | [.address, .pid, (.title | @base64)] | @tsv' <<<"$all_clients")
+}
+
+match_pass shell_when_unambiguous
+match_pass shell_by_command
+match_pass shell_by_directory
+match_pass shell_leftover
+
+# Every snapshot leaves behind what it saw, window by window. When a preset
+# opens somewhere unexpected the answer is in here rather than in a guess:
+# a shell sits where you left it, and this says where that was.
+LOG_DIR="${XDG_CACHE_HOME:-$HOME/.cache}/omarchy-workspace-presets"
+mkdir -p "$LOG_DIR"
+LOG="$LOG_DIR/last-snapshot.log"
+: >"$LOG"
+
+apps='[]'
+seen_pids=()
+captured_dirs=()
+captured_runs=()
+blind_terminals=0
+
+while IFS=$'\t' read -r ws class pid addr floating at size; do
+  [[ -n $pid && -r /proc/$pid/cmdline ]] || continue
+  cmd=$(strip_daemon_flags <"/proc/$pid/cmdline" | sed 's/[[:space:]]*$//')
+  [[ -n $cmd ]] || continue
+  cmd=$(add_profile_flag "$cmd")
+
+  if ! is_terminal "$pid" "$cmd"; then
+    # One entry per process: a browser with four windows is still one browser,
+    # and running it four times would only ever focus the same instance.
+    [[ " ${seen_pids[*]-} " == *" $pid "* ]] && continue
+    seen_pids+=("$pid")
+    apps=$(jq --arg cmd "$cmd" --arg class "$class" --argjson ws "$ws" \
+      '. + [{ cmd: $cmd, workspace: $ws, class: $class }]' <<<"$apps")
+    continue
+  fi
+
+  # One entry per terminal window: two terminals in the same directory is a
+  # normal layout — one tailing logs, one you work in — so both come back.
+  base=$(strip_working_dir "$(strip_exec_flag "$cmd")")
+  dir="${dir_for_addr[$addr]-}"
+  entry="$base"
+  if [[ -n $dir ]] && flag=$(working_directory_flag "${base%% *}" "$dir"); then
+    entry="$base $flag"
+    captured_dirs+=("${dir/#$HOME/\~}")
+  else
+    blind_terminals=$((blind_terminals + 1))
+  fi
+
+  # -e has to come last: everything after it belongs to the command.
+  run="${run_for_addr[$addr]-}"
+  if [[ -n $run ]]; then
+    entry="$entry -e $run"
+    captured_runs+=("${run%% *}")
+  fi
+
+  printf 'ws%-3s %-26s title=%-34s dir=%-46s run=%s\n' \
+    "$ws" "$class" "$(jq -r --arg a "$addr" '.[] | select(.address == $a) | .title' <<<"$all_clients")" \
+    "${dir:-<none>}" "${run:-<none>}" >>"$LOG"
+
+  # Only floating windows carry geometry. A tiled window's place comes from the
+  # layout and the order things opened in, and no dispatcher rebuilds a split
+  # tree — recording numbers for one would promise something replay cannot keep.
+  if [[ $floating == true ]]; then
+    apps=$(jq --arg cmd "$entry" --arg class "$class" --argjson ws "$ws" \
+      --arg at "$at" --arg size "$size" \
+      '. + [{ cmd: $cmd, workspace: $ws, class: $class, floating: true, at: $at, size: $size }]' <<<"$apps")
+  else
+    apps=$(jq --arg cmd "$entry" --arg class "$class" --argjson ws "$ws" \
+      '. + [{ cmd: $cmd, workspace: $ws, class: $class }]' <<<"$apps")
+  fi
+done < <(jq -r '.[] | [.ws, .class, .pid, .addr, .floating,
+                    (.at | join(",")), (.size | join(","))] | @tsv' <<<"$clients")
+
+if [[ $PRINT_ONLY == true ]]; then
+  printf '%s' "$apps"
+  exit 0
+fi
+
+count=$(jq 'length' <<<"$apps")
+if [[ $count -eq 0 ]]; then
+  if [[ $CURRENT_ONLY == true ]]; then
+    notify "Nothing on workspace $focus to snapshot"
+  else
+    notify "No windows to record"
+  fi
+  exit 0
+fi
+
+if [[ $CURRENT_ONLY == true ]]; then
+  icon="󰄄"
+  scope_label="workspace $focus"
+else
+  icon="󱂬"
+  scope_label="every workspace"
+fi
+
+tmp=$(mktemp)
+trap 'rm -f "$tmp"' EXIT
+jq --arg name "$NAME" --arg icon "$icon" --argjson apps "$apps" --argjson focus "$focus" \
+  '.version = 1
+   | .presets = ((.presets // []) + [{ name: $name, icon: $icon, focus: $focus, apps: $apps }])' \
+  "$CONFIG" >"$tmp"
+mv "$tmp" "$CONFIG"
+trap - EXIT
+
+# Deliberately does not open an editor. It used to, so you could rename the
+# preset it just wrote — but an editor left open on this file holds a buffer
+# from before every later panel edit, and saving it silently reverts renames
+# and resurrects deleted presets. The panel's rename button covers the naming,
+# so the editor is opened only when you ask for it.
+# Say which directories the terminals were caught in. A snapshot records where
+# a shell actually sits, which is not always where you believe you are working,
+# and finding that out on replay is a slow way to learn it.
+summary="$count $([[ $count -eq 1 ]] && echo app || echo apps) from $scope_label"
+if ((${#captured_dirs[@]} > 0)); then
+  summary="$summary
+in: $(printf '%s, ' "${captured_dirs[@]}" | sed 's/, $//')"
+fi
+if ((${#captured_runs[@]} > 0)); then
+  summary="$summary
+running: $(printf '%s, ' "${captured_runs[@]}" | sed 's/, $//')"
+fi
+if ((blind_terminals > 0)); then
+  summary="$summary
+$blind_terminals $([[ $blind_terminals -eq 1 ]] && echo terminal || echo terminals) with no directory"
+fi
+
+notify "Saved \"$NAME\" — $summary"

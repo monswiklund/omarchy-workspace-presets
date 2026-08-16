@@ -1,0 +1,40 @@
+{
+  "schemaVersion": 1,
+  "id": "io.github.monswiklund.workspace-presets",
+  "name": "Workspace Presets",
+  "version": "0.1.0",
+  "author": "Måns Wiklund",
+  "license": "MIT",
+  "description": "Launch a whole project setup — apps placed on their own workspaces — from one bar click.",
+  "kinds": [
+    "bar-widget"
+  ],
+  "entryPoints": {
+    "barWidget": "BarWidget.qml"
+  },
+  "barWidget": {
+    "displayName": "Workspace Presets",
+    "description": "Project presets that open every app on its workspace in one click",
+    "category": "System",
+    "allowMultiple": false,
+    "defaultSection": "left",
+    "defaults": {
+      "icon": "󱂬",
+      "skipRunning": false
+    },
+    "schema": [
+      {
+        "key": "icon",
+        "type": "string",
+        "label": "Bar icon",
+        "defaultValue": "󱂬"
+      },
+      {
+        "key": "skipRunning",
+        "type": "boolean",
+        "label": "Skip apps that are already running",
+        "defaultValue": false
+      }
+    ]
+  }
+}

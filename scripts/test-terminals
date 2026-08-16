@@ -1,0 +1,63 @@
+#!/bin/bash
+# The half of the recorder that is not portable: how each terminal says "start
+# here" and how each browser says "this profile". Both are pure string work, so
+# they can be checked without any of these programs installed — which is the
+# point, since most of them are not.
+#
+# `-e` needs no coverage: ghostty and alacritty implement it and foot accepts it
+# for xterm compatibility, so the command half is already common ground.
+
+set -uo pipefail
+cd "$(dirname "$0")/.."
+
+# Pull the table out of the recorder rather than restating it, so a change there
+# cannot quietly pass a test written against the old shape.
+eval "$(sed -n '/^working_directory_flag()/,/^}/p;/^browser_config_dir()/,/^}/p' scripts/record-preset)"
+
+failures=0
+check() {
+  local label="$1" actual="$2" expected="$3"
+  if [[ $actual == "$expected" ]]; then
+    printf 'ok   %s\n' "$label"
+  else
+    failures=$((failures + 1))
+    printf 'FAIL %s\n     expected %s\n     got      %s\n' "$label" "$expected" "$actual"
+  fi
+}
+
+check "ghostty joins the directory with =" \
+  "$(working_directory_flag /usr/bin/ghostty /home/you/dev)" "--working-directory=/home/you/dev"
+
+# The difference that fails silently: alacritty ignores the joined form, and a
+# terminal that opens in the wrong place says nothing about why.
+check "alacritty separates it with a space" \
+  "$(working_directory_flag /usr/bin/alacritty /home/you/dev)" "--working-directory /home/you/dev"
+
+check "foot joins it like ghostty" \
+  "$(working_directory_flag /usr/bin/foot /home/you/dev)" "--working-directory=/home/you/dev"
+
+check "the binary is matched by name, not by path" \
+  "$(working_directory_flag /nix/store/abc123/bin/ghostty /tmp)" "--working-directory=/tmp"
+
+check "a directory with a space survives" \
+  "$(working_directory_flag ghostty "/home/you/my project")" "--working-directory=/home/you/my\\ project"
+
+# An unknown terminal must fail rather than guess. A preset that opens a
+# terminal in the wrong place is a nuisance; one that writes ghostty syntax at
+# kitty is broken.
+working_directory_flag /usr/bin/kitty /tmp >/dev/null 2>&1
+check "an unrecognised terminal is refused, not guessed at" "$?" "1"
+
+check "chromium's profiles are where chromium keeps them" \
+  "$(browser_config_dir /usr/lib/chromium/chromium)" "$HOME/.config/chromium"
+check "chrome has its own directory" \
+  "$(browser_config_dir google-chrome-stable)" "$HOME/.config/google-chrome"
+check "brave nests two deep" \
+  "$(browser_config_dir brave-browser)" "$HOME/.config/BraveSoftware/Brave-Browser"
+
+# Firefox names profiles with -P and keeps them in an ini file, so it is handled
+# on its own branch rather than given a row here that almost fits.
+browser_config_dir firefox >/dev/null 2>&1
+check "firefox is not pretended to be Chromium-shaped" "$?" "1"
+
+exit $((failures == 0 ? 0 : 1))

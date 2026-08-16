@@ -1,0 +1,309 @@
+#!/usr/bin/env node
+// Smallest runnable check for Model.js: the two rules that are easy to get
+// wrong and invisible when they are. Run it with `scripts/test-model`.
+//
+// Model.js is a QML .js library, which node will not import directly — the
+// .pragma line is the only thing in the way, so it is stripped and the file
+// evaluated as an ordinary module.
+
+const fs = require("fs")
+const path = require("path")
+const vm = require("vm")
+
+const source = fs.readFileSync(path.join(__dirname, "..", "Model.js"), "utf8")
+const Model = {}
+vm.runInNewContext(source.replace(/^\.pragma library\s*/, "") + "\nObject.assign(exports, { parseConfig, runningClasses, launchPlan, pendingSteps, execExpr, focusExpr, presetSummary, renamedPreset, withoutPreset, presetList, parseComposeProjects, withComposeToggled, urlCommand, hasCompose, composeCommand, launchTally, withUrlAdded, withUrlRemoved, presetUrls, browserBaseFor, normalizeUrl, mergedLaunchSteps, withAppsReplaced, closePlan, closeSummary, closeWindowExpr, composeDownCommand })", { exports: Model })
+
+let failures = 0
+function check(label, actual, expected) {
+  const ok = JSON.stringify(actual) === JSON.stringify(expected)
+  if (!ok) failures++
+  console.log(`${ok ? "ok  " : "FAIL"} ${label}`)
+  if (!ok) console.log(`     expected ${JSON.stringify(expected)}\n     got      ${JSON.stringify(actual)}`)
+}
+
+// Quoting: a command with a quote in it must not be able to close the Lua
+// string and run something else.
+check("plain exec",
+  Model.execExpr({ cmd: "ghostty", workspace: "", matchClass: "" }),
+  'hl.dsp.exec_cmd("ghostty")')
+
+check("exec lands on its workspace, silently",
+  Model.execExpr({ cmd: "cursor ~/code", workspace: "2", matchClass: "" }),
+  'hl.dsp.exec_cmd("cursor ~/code", { workspace = "2 silent" })')
+
+check("quotes and backslashes are escaped",
+  Model.execExpr({ cmd: 'sh -c "echo \\ hi"', workspace: "", matchClass: "" }),
+  'hl.dsp.exec_cmd("sh -c \\"echo \\\\ hi\\"")')
+
+check("focus", Model.focusExpr("1"), 'hl.dsp.focus({ workspace = "1" })')
+
+// Skipping: only an app that declares a class can be recognised as running.
+const parsed = Model.parseConfig(JSON.stringify({
+  presets: [{
+    name: "Web",
+    apps: [
+      { cmd: "chromium", workspace: 1, class: "chromium" },
+      { cmd: "ghostty", workspace: 2 },
+      { cmd: "slack", workspace: 3, class: "Slack" }
+    ]
+  }]
+}))
+const preset = parsed.presets[0]
+const running = Model.runningClasses(JSON.stringify([{ class: "chromium" }, { class: "com.mitchellh.ghostty" }]))
+const plan = Model.launchPlan(preset, running, true)
+
+check("running app is skipped", plan.map(s => s.skipped), [true, false, false])
+check("classless app always launches", Model.pendingSteps(plan).map(s => s.app.cmd), ["ghostty", "slack"])
+check("summary counts what will actually run", Model.presetSummary(preset, plan), "2 of 3 to launch · ws 1, 2, 3")
+// "0 of 2" is accurate and reads like a fault, which matters because a fresh
+// snapshot of the workspace you are on always starts out in exactly that state.
+const allUp = Model.parseConfig(JSON.stringify({
+  presets: [{ name: "Up", apps: [
+    { cmd: "chromium", workspace: 1, class: "chromium" },
+    { cmd: "slack", workspace: 2, class: "Slack" }
+  ] }]
+})).presets[0]
+check("a preset with nothing left to launch says so, not \"0 of 2\"",
+  Model.presetSummary(allUp, Model.launchPlan(allUp, Model.runningClasses(
+    JSON.stringify([{ class: "chromium" }, { class: "Slack" }])), true)),
+  "all 2 already running · ws 1, 2")
+check("skipping off launches everything",
+  Model.launchPlan(preset, running, false).map(s => s.skipped), [false, false, false])
+
+// A broken file must not take the panel down with it.
+check("bad JSON reports instead of throwing", Model.parseConfig("{nope").presets, [])
+check("nameless presets are dropped",
+  Model.parseConfig('{"presets":[{"apps":[]},{"name":"Real","apps":[]}]}').presets.map(p => p.name),
+  ["Real"])
+
+// Rename and delete address the file by position, and a preset the panel
+// refuses to show still occupies a slot on disk. Getting this wrong edits the
+// preset next to the one the user clicked.
+const messy = {
+  version: 1,
+  keepMe: "not a field this plugin models",
+  presets: [
+    { name: "", apps: [] },                               // dropped by the panel
+    { name: "Keep", icon: "󰅩", apps: [], colour: "blue" }, // sourceIndex 1
+    { name: "Drop", apps: [] }                            // sourceIndex 2
+  ]
+}
+const shown = Model.parseConfig(JSON.stringify(messy)).presets
+check("invalid entries do not shift source indexes",
+  shown.map(p => [p.name, p.sourceIndex]), [["Keep", 1], ["Drop", 2]])
+
+const renamed = Model.renamedPreset(messy, shown[0].sourceIndex, "  Renamed  ")
+check("rename hits the right slot and trims",
+  Model.presetList(renamed).map(p => p.name), ["", "Renamed", "Drop"])
+check("rename keeps keys this plugin does not model",
+  Model.presetList(renamed)[1].colour, "blue")
+check("rename keeps top-level keys", renamed.keepMe, "not a field this plugin models")
+check("empty rename is refused", Model.renamedPreset(messy, 1, "   "), null)
+check("rename out of range is refused", Model.renamedPreset(messy, 9, "x"), null)
+
+const deleted = Model.withoutPreset(messy, shown[1].sourceIndex)
+check("delete removes only the targeted preset",
+  Model.presetList(deleted).map(p => p.name), ["", "Keep"])
+check("the original is left alone",
+  Model.presetList(messy).map(p => p.name), ["", "Keep", "Drop"])
+
+// The bare-array file shape has to survive a round trip as an array.
+const asArray = [{ name: "Solo", apps: [] }]
+check("array-shaped files stay arrays",
+  Array.isArray(Model.renamedPreset(asArray, 0, "Duo")), true)
+check("array rename works", Model.renamedPreset(asArray, 0, "Duo")[0].name, "Duo")
+
+// Docker stacks are picked, not snapshotted, and toggling one must be exactly
+// reversible — an accidental tick should leave no trace behind.
+const composeJson = JSON.stringify([
+  { Name: "web", Status: "running(2)", ConfigFiles: "/srv/web/compose.yml" },
+  { Name: "db", Status: "exited(1)", ConfigFiles: "/srv/db/compose.yml,/srv/db/override.yml" },
+  { Name: "nameless", Status: "running(1)", ConfigFiles: "" }
+])
+const projects = Model.parseComposeProjects(composeJson)
+check("compose projects are listed with running state",
+  projects.map(p => [p.name, p.configFile, p.running]),
+  [["db", "/srv/db/compose.yml", false], ["web", "/srv/web/compose.yml", true]])
+
+check("a stack command quotes its path",
+  Model.composeCommand("/srv/it's here/compose.yml"),
+  "docker compose -f '/srv/it'\\''s here/compose.yml' up -d")
+
+const withStack = { version: 1, presets: [{ name: "Proj", apps: [{ cmd: "ghostty", workspace: 1 }] }] }
+const added = Model.withComposeToggled(withStack, 0, "/srv/web/compose.yml")
+check("a stack is added ahead of the apps waiting on it",
+  Model.presetList(added)[0].apps.map(a => a.compose || a.cmd),
+  ["/srv/web/compose.yml", "ghostty"])
+check("the panel sees the stack as included",
+  Model.hasCompose(Model.parseConfig(JSON.stringify(added)).presets[0], "/srv/web/compose.yml"), true)
+
+const removed = Model.withComposeToggled(added, 0, "/srv/web/compose.yml")
+check("toggling off is exactly reversible",
+  JSON.stringify(Model.presetList(removed)[0].apps),
+  JSON.stringify(withStack.presets[0].apps))
+
+check("a stack entry survives the parser as a launchable command",
+  Model.parseConfig(JSON.stringify(added)).presets[0].apps[0].cmd,
+  "docker compose -f '/srv/web/compose.yml' up -d")
+
+check("the notification counts stacks apart from apps",
+  Model.launchTally([
+    { app: { cmd: "docker compose ... up -d", compose: "/srv/a.yml" } },
+    { app: { cmd: "ghostty" } },
+    { app: { cmd: "chromium" } }
+  ]), "2 apps, 1 stack")
+check("pages are counted apart from apps too",
+  Model.launchTally([
+    { app: { cmd: "x", url: "https://a" } },
+    { app: { cmd: "y", url: "https://b" } },
+    { app: { cmd: "ghostty" } }
+  ]), "1 app, 2 pages")
+check("a stack-only preset does not claim apps",
+  Model.launchTally([{ app: { cmd: "x", compose: "/srv/a.yml" } }]), "1 stack")
+
+// URLs a browser will never hand back have to be typed in once, so what is
+// stored has to survive a round trip and land in the right profile.
+check("a pasted address gets a scheme", Model.normalizeUrl("jira.example.com/x"), "https://jira.example.com/x")
+check("an address that has one keeps it", Model.normalizeUrl("http://localhost:3000"), "http://localhost:3000")
+
+const withBrowser = { version: 1, presets: [{ name: "Proj", apps: [
+  { cmd: "/usr/lib/chromium/chromium --ozone-platform=wayland --profile-directory=Default", workspace: 1, class: "chromium" },
+  { cmd: "ghostty", workspace: 1 }
+] }] }
+
+check("URLs inherit the preset's browser and profile",
+  Model.urlCommand(Model.parseConfig(JSON.stringify(withBrowser)).presets[0], "https://x.dev"),
+  "/usr/lib/chromium/chromium --profile-directory=Default 'https://x.dev'")
+
+check("a preset with no browser defers to the desktop default",
+  Model.urlCommand(Model.parseConfig('{"presets":[{"name":"P","apps":[{"cmd":"ghostty"}]}]}').presets[0], "https://x.dev"),
+  "omarchy-launch-browser 'https://x.dev'")
+
+const oneUrl = Model.withUrlAdded(withBrowser, 0, "x.dev")
+check("a URL is appended, behind the apps that need the browser up",
+  Model.presetList(oneUrl)[0].apps.map(a => a.url || a.cmd.split(" ")[0]),
+  ["/usr/lib/chromium/chromium", "ghostty", "https://x.dev"])
+check("the panel lists it back",
+  Model.presetUrls(Model.parseConfig(JSON.stringify(oneUrl)).presets[0]), ["https://x.dev"])
+check("the same address twice is refused", Model.withUrlAdded(oneUrl, 0, "https://x.dev"), null)
+check("a blank address is refused", Model.withUrlAdded(withBrowser, 0, "   "), null)
+
+check("removing a URL is exactly reversible",
+  JSON.stringify(Model.presetList(Model.withUrlRemoved(oneUrl, 0, "https://x.dev"))[0].apps),
+  JSON.stringify(withBrowser.presets[0].apps))
+check("removing one that is not there changes nothing",
+  Model.withUrlRemoved(oneUrl, 0, "https://nope.dev"), null)
+
+// Separate browser invocations arrive as separate windows; one invocation
+// carrying every address arrives as tabs. The file stays granular either way.
+const pagePreset = Model.parseConfig(JSON.stringify({ presets: [{ name: "P", apps: [
+  { cmd: "/usr/lib/chromium/chromium --profile-directory=Default", workspace: 1, class: "chromium" },
+  { cmd: "chromium 'https://a.dev'", url: "https://a.dev" },
+  { cmd: "chromium 'https://b.dev'", url: "https://b.dev" }
+] }] })).presets[0]
+const pagePlan = Model.pendingSteps(Model.launchPlan(pagePreset, {}, false))
+
+check("every page rides in one browser call, and the bare browser is dropped",
+  Model.mergedLaunchSteps(pagePreset, pagePlan).map(s => s.app.cmd),
+  ["/usr/lib/chromium/chromium --profile-directory=Default 'https://a.dev' 'https://b.dev'"])
+
+check("the page call inherits the browser's workspace",
+  Model.mergedLaunchSteps(pagePreset, pagePlan)[0].app.workspace, "1")
+
+check("pages still count individually in the notification",
+  Model.launchTally(Model.mergedLaunchSteps(pagePreset, pagePlan)), "2 pages")
+
+// Without pages the browser is the only thing that opens it, so it stays.
+const noPages = Model.parseConfig(JSON.stringify({ presets: [{ name: "P", apps: [
+  { cmd: "chromium --profile-directory=Default", workspace: 1, class: "chromium" }
+] }] })).presets[0]
+check("a preset with no pages still launches its browser",
+  Model.mergedLaunchSteps(noPages, Model.pendingSteps(Model.launchPlan(noPages, {}, false))).length, 1)
+
+check("a preset without pages is untouched by the merge",
+  Model.mergedLaunchSteps(preset, plan).length, plan.length)
+
+// Updating a preset re-snapshots its windows. The stacks ticked into it and
+// the pages typed into it are hand-made and unrecoverable by a snapshot, so
+// they have to survive the update untouched.
+const rich = { version: 1, presets: [{
+  name: "Service System", icon: "󰄄", focus: 1, colour: "blue",
+  apps: [
+    { cmd: "docker compose -f /srv/a.yml up -d", compose: "/srv/a.yml" },
+    { cmd: "ghostty --working-directory=/old", workspace: 1 },
+    { cmd: "chromium 'https://x.dev'", url: "https://x.dev" }
+  ]
+}] }
+const fresh = [
+  { cmd: "ghostty --working-directory=/new", workspace: 1, class: "ghostty" },
+  { cmd: "chromium --profile-directory=Default", workspace: 1, class: "chromium" }
+]
+const updated = Model.withAppsReplaced(rich, 0, fresh)
+
+check("an update keeps stacks and pages, replaces the windows",
+  Model.presetList(updated)[0].apps.map(a => a.compose || a.url || a.cmd),
+  ["/srv/a.yml", "ghostty --working-directory=/new", "chromium --profile-directory=Default", "https://x.dev"])
+check("an update keeps the preset's own fields",
+  [updated.presets[0].name, updated.presets[0].icon, updated.presets[0].focus, updated.presets[0].colour],
+  ["Service System", "󰄄", 1, "blue"])
+check("an empty recording is refused rather than emptying the preset",
+  Model.withAppsReplaced(rich, 0, []), null)
+check("the original is left alone",
+  Model.presetList(rich)[0].apps.length, 3)
+
+// Closing is blunt by design — class on the preset's workspaces — so what it
+// will not touch matters as much as what it will.
+const project = Model.parseConfig(JSON.stringify({ presets: [{
+  name: "Proj", focus: 1,
+  apps: [
+    { cmd: "docker compose -f /srv/a.yml up -d", compose: "/srv/a.yml" },
+    { cmd: "ghostty", workspace: 1, class: "com.mitchellh.ghostty" },
+    { cmd: "chromium", workspace: 2, class: "chromium" },
+    { cmd: "chromium 'https://x.dev'", url: "https://x.dev" }
+  ]
+}] })).presets[0]
+
+const desktop = JSON.stringify([
+  { address: "0x1", class: "com.mitchellh.ghostty", title: "logs", workspace: { id: 1 } },
+  { address: "0x2", class: "chromium", title: "mail", workspace: { id: 2 } },
+  { address: "0x3", class: "com.mitchellh.ghostty", title: "elsewhere", workspace: { id: 7 } },
+  { address: "0x4", class: "Spotify", title: "music", workspace: { id: 1 } }
+])
+const closing = Model.closePlan(project, desktop)
+
+check("closes the preset's classes on the preset's workspaces",
+  closing.windows.map(w => w.address), ["0x1", "0x2"])
+check("leaves the same app alone on a workspace the preset does not use",
+  closing.windows.some(w => w.address === "0x3"), false)
+check("leaves apps the preset never mentions alone",
+  closing.windows.some(w => w.address === "0x4"), false)
+check("stacks come along", closing.stacks, ["/srv/a.yml"])
+check("the confirmation counts both", Model.closeSummary(closing), "2 windows and 1 stack")
+check("nothing to close says so", Model.closeSummary({ windows: [], stacks: [] }), "nothing to close")
+
+check("windows are closed, never killed",
+  Model.closeWindowExpr("0x1"), 'hl.dsp.window.close({ window = "address:0x1" })')
+check("stacks come down, and the path is quoted",
+  Model.composeDownCommand("/srv/it's here/a.yml"),
+  "docker compose -f '/srv/it'\\''s here/a.yml' down")
+
+// Geometry is only promised for floating windows. Hyprland has no dispatcher
+// that rebuilds a split tree, so recording numbers for a tiled window would
+// promise something replay cannot keep.
+const placed = Model.parseConfig(JSON.stringify({ presets: [{ name: "P", apps: [
+  { cmd: "nautilus", workspace: 2, floating: true, at: "100,200", size: "800,600" },
+  { cmd: "ghostty", workspace: 2 }
+] }] })).presets[0]
+
+check("a floating window arrives already placed",
+  Model.execExpr(placed.apps[0]),
+  'hl.dsp.exec_cmd("nautilus", { workspace = "2 silent", float = true, size = "800 600", move = "100 200" })')
+check("a tiled window gets no geometry at all",
+  Model.execExpr(placed.apps[1]),
+  'hl.dsp.exec_cmd("ghostty", { workspace = "2 silent" })')
+check("a floating window with no workspace still floats",
+  Model.execExpr(Model.parseConfig('{"presets":[{"name":"P","apps":[{"cmd":"x","floating":true,"size":"10,20"}]}]}').presets[0].apps[0]),
+  'hl.dsp.exec_cmd("x", { float = true, size = "10 20" })')
+
+process.exit(failures === 0 ? 0 : 1)
