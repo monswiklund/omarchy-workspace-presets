@@ -26,6 +26,7 @@ guess at — six icons on a row made a toolbar out of a list.
 ```
 ▣  Service System                    ⌄
    · 󰖯 3   󰡨 1   󰖟 2   󰍹 1
+   Contents                       ›
    Docker                        2  ›
    Icon                            ›
    Pages                         2  ›
@@ -35,12 +36,13 @@ guess at — six icons on a row made a toolbar out of a list.
    Delete
 ```
 
-Docker, Pages and Icon swap the contents of the same slot rather than opening a level
+Contents, Docker, Pages and Icon swap the contents of the same slot rather than opening a level
 below it — three levels deep in a bar popup is nobody's idea of navigable.
 
 | Action | What it does                                                          |
 |--------|------------------------------------------------------------------------|
 | Launch | Click the row                                                          |
+| Contents | Everything the preset holds, in the order it launches                |
 | Docker | Tick the Compose projects this preset should bring up                  |
 | Pages  | Paste a URL and press Enter; click a page to remove it                 |
 | Icon   | A grid of glyphs; the current one is marked                            |
@@ -83,6 +85,25 @@ this plugin does not model, so a preset carrying your own fields survives. The
 panel adopts what it wrote in the same breath rather than waiting to be told —
 a FileView raises no change for its own write, and relying on that once left the
 list showing a preset that was already gone from disk.
+
+### Seeing what a preset holds
+
+The summary counts; **Contents** names. Until it existed the only way to see a
+preset's windows was to open the JSON.
+
+```
+‹  Contents
+   󰡨  Dev/api
+   󰖯  docker compose logs -f       Dev/api    󰍹 2
+   󰖯  claude --continue            Dev/web    󰍹 1
+   󰖯  chromium                                󰍹 1
+   󰖟  jira.example.com/browse/X
+```
+
+A terminal is named by what it runs rather than by itself — `claude --continue`
+is the window, ghostty is the box it came in — and detailed by where it runs.
+A terminal running nothing is named by itself. Home is said as `~` rather than
+spelled out.
 
 ### What the list tells you
 

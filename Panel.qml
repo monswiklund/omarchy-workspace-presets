@@ -64,7 +64,7 @@ Panel {
   property int menuCursor: 0
   readonly property bool expanded: expandedIndex !== -1
 
-  readonly property var menuItems: ["stacks", "pages", "icon", "rename", "up", "down", "update", "close", "delete"]
+  readonly property var menuItems: ["contents", "stacks", "pages", "icon", "rename", "up", "down", "update", "close", "delete"]
 
   // Destructive and lossy actions arm first; the row's own label says what the
   // second click will do.
@@ -232,6 +232,7 @@ Panel {
       return preset ? Model.presetUrls(preset).length : 0
     }
     if (root.expandedMode === "icon") return Model.iconChoices().length
+    if (root.expandedMode === "contents") return 0
     return 0
   }
 
@@ -260,6 +261,7 @@ Panel {
     }
 
     switch (root.menuItems[root.menuCursor]) {
+      case "contents": return root.openMode("contents", preset)
       case "icon": return root.openMode("icon", preset)
       case "up": return root.movePreset(preset, -1)
       case "down": return root.movePreset(preset, 1)
@@ -857,7 +859,8 @@ Panel {
           anchors.verticalCenter: parent.verticalCenter
           text: "‹  " + (root.expandedMode === "stacks" ? "Docker"
             : root.expandedMode === "pages" ? "Pages"
-        : root.expandedMode === "icon" ? "Icon" : "Back")
+        : root.expandedMode === "icon" ? "Icon"
+        : root.expandedMode === "contents" ? "Contents" : "Back")
           color: Qt.darker(root.barForeground, 1.3)
           font.family: root.fontFamily
           font.pixelSize: Style.font.bodySmall
@@ -952,6 +955,56 @@ Panel {
               font.family: root.fontFamily
               font.pixelSize: Style.font.caption
             }
+          }
+        }
+      }
+
+      // ---- contents: what the preset holds, in the order it launches
+      Repeater {
+        model: presetRow.open && root.expandedMode === "contents"
+          ? Model.presetContents(presetRow.preset, root.home) : []
+
+        Item {
+          id: contentRow
+          required property var modelData
+          width: parent.width
+          implicitHeight: contentLabel.implicitHeight + Style.spacing.sm
+
+          Text {
+            id: contentGlyph
+            anchors.left: parent.left
+            anchors.leftMargin: Style.spacing.lg
+            anchors.verticalCenter: parent.verticalCenter
+            width: Style.space(20)
+            text: contentRow.modelData.glyph
+            color: Qt.darker(root.barForeground, 1.5)
+            font.family: root.fontFamily
+            font.pixelSize: Style.font.iconSmall
+          }
+
+          Text {
+            id: contentLabel
+            anchors.left: contentGlyph.right
+            anchors.leftMargin: Style.spacing.md
+            anchors.right: contentDetail.left
+            anchors.rightMargin: Style.spacing.md
+            anchors.verticalCenter: parent.verticalCenter
+            text: contentRow.modelData.label
+            color: root.barForeground
+            font.family: root.fontFamily
+            font.pixelSize: Style.font.caption
+            elide: Text.ElideRight
+          }
+
+          Text {
+            id: contentDetail
+            anchors.right: parent.right
+            anchors.rightMargin: Style.spacing.lg
+            anchors.verticalCenter: parent.verticalCenter
+            text: [contentRow.modelData.detail, contentRow.modelData.right].filter(Boolean).join("   ")
+            color: Qt.darker(root.barForeground, 1.7)
+            font.family: root.fontFamily
+            font.pixelSize: Style.font.caption
           }
         }
       }

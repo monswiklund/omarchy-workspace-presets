@@ -12,7 +12,7 @@ const vm = require("vm")
 
 const source = fs.readFileSync(path.join(__dirname, "..", "Model.js"), "utf8")
 const Model = {}
-vm.runInNewContext(source.replace(/^\.pragma library\s*/, "") + "\nObject.assign(exports, { parseConfig, runningClasses, launchPlan, pendingSteps, execExpr, focusExpr, presetSummary, renamedPreset, withoutPreset, presetList, parseComposeProjects, withComposeToggled, urlCommand, hasCompose, composeCommand, launchTally, withUrlAdded, withUrlRemoved, presetUrls, browserBaseFor, normalizeUrl, mergedLaunchSteps, withAppsReplaced, closePlan, closeSummary, closeWindowExpr, composeDownCommand, cycleIndex, backOutStep, menuLabel, isDestructive, iconChoices, withIconSet, looksActive, withPresetMoved, refreshTally, armTransition })", { exports: Model })
+vm.runInNewContext(source.replace(/^\.pragma library\s*/, "") + "\nObject.assign(exports, { parseConfig, runningClasses, launchPlan, pendingSteps, execExpr, focusExpr, presetSummary, renamedPreset, withoutPreset, presetList, parseComposeProjects, withComposeToggled, urlCommand, hasCompose, composeCommand, launchTally, withUrlAdded, withUrlRemoved, presetUrls, browserBaseFor, normalizeUrl, mergedLaunchSteps, withAppsReplaced, closePlan, closeSummary, closeWindowExpr, composeDownCommand, cycleIndex, backOutStep, menuLabel, isDestructive, iconChoices, withIconSet, looksActive, withPresetMoved, refreshTally, armTransition, presetContents })", { exports: Model })
 
 let failures = 0
 function check(label, actual, expected) {
@@ -413,5 +413,26 @@ check("and disarms the first — two live confirmations is a question with no an
 
 check("the same action on a different preset arms that one",
   Model.armTransition(armed.armed, "close", 5), { armed: { "delete": -1, "close": 5, "update": -1 }, fire: false })
+
+// The summary counts; this names. Until it existed the only way to see a
+// preset's windows was to open the JSON.
+const held = Model.parseConfig(JSON.stringify({ presets: [{ name: "P", apps: [
+  { cmd: "docker compose -f /home/you/Dev/api/docker-compose.yml up -d", compose: "/home/you/Dev/api/docker-compose.yml" },
+  { cmd: "/usr/bin/ghostty --working-directory=/home/you/Dev/api -e docker compose logs -f", workspace: 2 },
+  { cmd: "/usr/bin/ghostty --working-directory=/home/you", workspace: 1 },
+  { cmd: "/usr/lib/chromium/chromium --ozone-platform=wayland", workspace: 1 },
+  { cmd: "chromium 'https://jira.example.com/browse/X'", url: "https://jira.example.com/browse/X" }
+] }] })).presets[0]
+const rows = Model.presetContents(held, "/home/you")
+
+// The command a terminal was told to run says more than the terminal's name.
+check("a terminal is named by what it runs", rows[1].label, "docker compose logs -f")
+check("and detailed by where it runs", [rows[1].detail, rows[1].right], ["Dev/api", "󰍹 2"])
+check("home is said as home, not spelled out", rows[2].detail, "~")
+check("a terminal running nothing is named by itself", rows[2].label, "ghostty")
+check("an app is named without its flags", rows[3].label, "chromium")
+check("a stack is named by its project directory", [rows[0].glyph, rows[0].label], ["󰡨", "Dev/api"])
+check("a page drops the scheme", [rows[4].glyph, rows[4].label], ["󰖟", "jira.example.com/browse/X"])
+check("everything the preset holds is listed, in launch order", rows.length, 5)
 
 process.exit(failures === 0 ? 0 : 1)

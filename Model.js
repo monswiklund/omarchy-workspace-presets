@@ -381,6 +381,68 @@ function withPresetMoved(raw, sourceIndex, delta) {
   return withPresetList(raw, list)
 }
 
+// -------------------------------------------------------------- contents
+//
+// What a preset actually holds, in the order it launches. The summary counts;
+// this names. Until now the only way to see the windows was to open the JSON.
+
+function shortenPath(dir) {
+  var parts = String(dir || "").replace(/\/+$/, "").split("/")
+  if (parts.length === 0) return ""
+  if (parts.length <= 2) return parts.join("/")
+  return parts.slice(-2).join("/")
+}
+
+function shortenUrl(url) {
+  var trimmed = String(url || "").replace(/^[a-z]+:\/\//i, "").replace(/\/+$/, "")
+  return trimmed.length > 44 ? trimmed.slice(0, 43) + "…" : trimmed
+}
+
+// The command a terminal was told to run says more about the window than the
+// terminal's own name does: "claude --continue" is the window, ghostty is the
+// box it came in.
+function contentLabel(app) {
+  var exec = String(app.cmd).match(/\s-e\s+(.+)$/)
+  if (exec) return exec[1]
+
+  var binary = String(app.cmd).split(/\s+/)[0]
+  return binary.split("/").pop()
+}
+
+function contentDirectory(app, home) {
+  var match = String(app.cmd).match(/--(?:working-directory|directory|cwd)[= ](\S+)/)
+  if (!match) return ""
+
+  var dir = match[1].replace(/\\ /g, " ")
+  // Home is where a shell sits when it sits nowhere in particular, and saying
+  // so is shorter and clearer than naming the path.
+  if (home && dir === home) return "~"
+  return shortenPath(dir)
+}
+
+function presetContents(preset, home) {
+  var rows = []
+  for (var i = 0; i < preset.apps.length; i++) {
+    var app = preset.apps[i]
+
+    if (app.compose) {
+      rows.push({ glyph: "󰡨", label: shortenPath(app.compose.replace(/\/[^\/]+$/, "")), detail: "", right: "" })
+      continue
+    }
+    if (app.url) {
+      rows.push({ glyph: "󰖟", label: shortenUrl(app.url), detail: "", right: "" })
+      continue
+    }
+    rows.push({
+      glyph: "󰖯",
+      label: contentLabel(app),
+      detail: contentDirectory(app, home),
+      right: app.workspace === "" ? "" : "󰍹 " + app.workspace
+    })
+  }
+  return rows
+}
+
 // -------------------------------------------------------------- arming
 //
 // Two clicks on the same action fire it; anything else arms instead. Written
@@ -427,6 +489,7 @@ function backOutStep(state) {
 function menuLabel(action, armed) {
   if (armed) return "Click again to confirm"
   switch (action) {
+    case "contents": return "Contents"
     case "icon": return "Icon"
     case "up": return "Move up"
     case "down": return "Move down"
