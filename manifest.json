@@ -3,7 +3,7 @@
   "id": "io.github.monswiklund.workspace-presets",
   "name": "Project Presets",
   "version": "0.1.0",
-  "author": "Måns Wiklund",
+  "author": "Weaklund",
   "license": "MIT",
   "description": "Snapshot a project workspace and bring it back with one click — apps on their workspaces, terminals in the directories they were in and running what they ran, Docker Compose stacks and browser pages.",
   "kinds": [
