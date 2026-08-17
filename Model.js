@@ -1,6 +1,6 @@
 .pragma library
 
-// Pure logic for Workspace Presets: parsing the user's JSON, deciding which
+// Pure logic for Project Presets: parsing the user's JSON, deciding which
 // apps still need launching, and building the Lua expressions this Hyprland
 // takes. No QML types in here, so every rule below is testable with plain
 // node — see scripts/test-model.

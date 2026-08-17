@@ -1,8 +1,15 @@
-# Workspace Presets
+# Project Presets
 
 A bar widget for Omarchy Quattro. Click it, pick a project, and every app in
 that preset opens on the workspace you assigned it — without the screen
 following along while they start.
+
+It was called Workspace Presets until it was pointed out that a workspace in
+Hyprland is one numbered desktop, while a preset here spans several — and that
+the panel's own buttons had been saying *project* all along. The plugin id, the
+IPC name and the config file keep the old word on purpose: they are what an
+install and a keybinding are addressed by, and renaming them would break both
+for the sake of a word nobody types.
 
 ## Requirements
 

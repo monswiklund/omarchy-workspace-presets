@@ -4,7 +4,7 @@ import Quickshell.Io
 import qs.Commons
 import qs.Ui
 
-// Bar entry point for Workspace Presets. Owns the icon in the bar and hosts
+// Bar entry point for Project Presets. Owns the icon in the bar and hosts
 // the preset list; Panel.qml owns everything inside the popup.
 //
 // The forwarding below is the shape the bar requires of a widget that has a
@@ -84,7 +84,7 @@ BarWidget {
     bar: root.bar
     text: root.icon
     fontSize: Style.font.icon
-    tooltipText: "Workspace presets"
+    tooltipText: "Project presets"
     onPressed: function (buttonCode) {
       if (buttonCode === Qt.LeftButton) root.togglePanel()
     }

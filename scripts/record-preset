@@ -40,7 +40,7 @@ done
 
 notify() {
   if command -v omarchy-notification-send >/dev/null 2>&1; then
-    omarchy-notification-send -u "${2:-low}" "Workspace presets" "$1"
+    omarchy-notification-send -u "${2:-low}" "Project presets" "$1"
   else
     echo "$1"
   fi
